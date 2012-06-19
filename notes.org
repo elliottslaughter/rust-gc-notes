@@ -1,5 +1,19 @@
-* 2012-06-19
-** Notes to self
+* 2012-06-19: Notes to self
+** FastISel
 *** Rust doesn't call SelectionDAG or FastISel directly, but through an LLVM pass.
 *** Some function is responsible for setting up the instruction selector (addISelToPass or somesuch).
 *** Need to add fast-isel-abort parameter to this pass so the FastISel knows not to fall back to SelectionDAG.
+*** Rust compilation happens in three phases:
+**** Stage 0: Download binary from server.
+**** Stage 1: Compile rustc with binary.
+**** Stage 2: Compile rustc with itself.
+**** Stage 3: Compile rustc with itself again to check stability.
+*** If you swap in FastISel, then you might only be able to get through stage 1 (i.e. rustc might not be able to compile itself), but you should be able to still try some simple testcases.
+*** See how many testcases you can do, then switch over to other stuff.
+** Roadmap (as far as I can remember)
+*** ISel
+**** FastISel and fast-isel-abort
+**** Merge work on FastISel
+**** Finish work on SelectionDAG
+*** Unwinding
+*** ???
