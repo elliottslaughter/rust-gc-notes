@@ -1,0 +1,5 @@
+* 2012-06-19
+** Notes to self
+*** Rust doesn't call SelectionDAG or FastISel directly, but through an LLVM pass.
+*** Some function is responsible for setting up the instruction selector (addISelToPass or somesuch).
+*** Need to add fast-isel-abort parameter to this pass so the FastISel knows not to fall back to SelectionDAG.
