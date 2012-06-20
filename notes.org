@@ -18,17 +18,66 @@
 *** Unwinding
 *** ???
 * 2012-06-20: Notes to self
-** Still looking for the call that sets the ISel parameters...
+** Still looking for the call that sets the ISel parameters
 *** The rustc backend calls addPassesToEmitFile for codegen (rustllvm/RustWrapper.cpp)
 **** ==> calls addPassesToGenerateCode
 **** ==> sets TargetMachine::setFastISel and calls TargetPassConfig::addInstSelector (abstract method)
 **** ==> X86PassConfig::addInstSelector ==> createX86ISelDag ==> new X86DAGToDAGISel
-*** But -fast-isel-abort is specified in SelectionDagISel.cpp
-**** SelectionDAGISel.cpp is the top-level file that takes the -fast-isel and -fast-isel-abort command line params.
-**** But it doesn't pass -fast-isel-abort to the TargetMachine when it creates the FastISel.
-**** SelectionDAGISel manually calls the FastISel when doing codegen.
+*** -fast-isel-abort is specified in SelectionDAGISel.cpp
+**** SelectionDAGISel.cpp is an LLVM pass that takes -fast-isel-abort as a command line param
+***** -fast-isel on the other hand is passed via the TargetMachine and PassConfig
+**** SelectionDAGISel does NOT pass -fast-isel-abort to the TargetMachine when it creates the FastISel
+**** SelectionDAGISel manually calls the FastISel when doing codegen
 **** So it just aborts manually when FastISel fails to select all instructions for a block. (See lines 1140-1143.)
 ***** if (EnableFastISelAbort) llvm_unreachable(...);
+*** Got -fast-isel-abort to work by hard-coding it in SelectionDAGISel.cpp
+
+diff --git a/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp b/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp
+index 2c149da..c0aaf13 100644
+--- a/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp
++++ b/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp
+@@ -54,6 +54,7 @@
+ #include "llvm/ADT/PostOrderIterator.h"
+ #include "llvm/ADT/Statistic.h"
+ #include <algorithm>
++#include <cstdio>
+ using namespace llvm;
+ 
+ STATISTIC(NumFastIselFailures, "Number of instructions fast isel failed on");
+@@ -340,6 +341,11 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
+   assert((!EnableFastISelAbort || TM.Options.EnableFastISel) &&
+          "-fast-isel-abort requires -fast-isel");
+ 
++  if (TM.Options.EnableFastISel) EnableFastISelAbort = true; // Elliott
++  printf("Elliott: This is SelectionDAGISel.\n");
++  printf("Elliott: -fast-isel is %d.\n", TM.Options.EnableFastISel);
++  printf("Elliott: -fast-isel-abort is %d.\n", !!EnableFastISelAbort);
++
+   const Function &Fn = *mf.getFunction();
+   const TargetInstrInfo &TII = *TM.getInstrInfo();
+   const TargetRegisterInfo &TRI = *TM.getRegisterInfo();
+
+*** But FastISel can't compile any non-trivial program anyway, so it doesn't seem to help.
+
+$ cat test.rs
+fn main () {
+    io::println("hi");
+}
+
+$ rustc test.rs
+Elliott: This is SelectionDAGISel.
+Elliott: -fast-isel is 1.
+Elliott: -fast-isel-abort is 1.
+FastISel missed terminator:   invoke void @_ZN2io7println17_7bd51147c9de282c3_02E(i1* undef, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* undef, { i32, %tydesc*, i8*, i8*, { i32, i32, [0 x i8] } } addrspace(1)* %6)
+          to label %7 unwind label %8
+FastISel miss:   store { i8*, i32 } %9, { i8*, i32 }* %2
+FastISel didn't select the entire block
+UNREACHABLE executed at /home/elliottslaughter/rust/src/llvm/lib/CodeGen/SelectionDAG/SelectionDAGISel.cpp:1149!
+Stack dump:
+0.	Running pass 'Function Pass Manager' on module 'test.rc'.
+1.	Running pass 'X86 DAG->DAG Instruction Selection' on function '@_ZN4main17_f8ae15773a042ac13_00E'
+Aborted (core dumped)
+
 ** Need to grill Patrick (pcwalton) again to figure out which of his branches I'm interested in
 *** gc? (11 months old)
 *** backpointers? (20 months old)
