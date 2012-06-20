@@ -17,3 +17,20 @@
 **** Finish work on SelectionDAG
 *** Unwinding
 *** ???
+* 2012-06-20: Notes to self
+** Still looking for the call that sets the ISel parameters...
+*** The rustc backend calls addPassesToEmitFile for codegen (rustllvm/RustWrapper.cpp)
+**** ==> calls addPassesToGenerateCode
+**** ==> sets TargetMachine::setFastISel and calls TargetPassConfig::addInstSelector (abstract method)
+**** ==> X86PassConfig::addInstSelector ==> createX86ISelDag ==> new X86DAGToDAGISel
+*** But -fast-isel-abort is specified in SelectionDagISel.cpp
+**** SelectionDAGISel.cpp is the top-level file that takes the -fast-isel and -fast-isel-abort command line params.
+**** But it doesn't pass -fast-isel-abort to the TargetMachine when it creates the FastISel.
+**** SelectionDAGISel manually calls the FastISel when doing codegen.
+**** So it just aborts manually when FastISel fails to select all instructions for a block. (See lines 1140-1143.)
+***** if (EnableFastISelAbort) llvm_unreachable(...);
+** Need to grill Patrick (pcwalton) again to figure out which of his branches I'm interested in
+*** gc? (11 months old)
+*** backpointers? (20 months old)
+*** unique-imm? (10 months old)
+*** Others don't look relevant.
