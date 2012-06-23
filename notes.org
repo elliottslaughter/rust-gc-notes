@@ -57,7 +57,7 @@ index 2c149da..c0aaf13 100644
    const TargetInstrInfo &TII = *TM.getInstrInfo();
    const TargetRegisterInfo &TRI = *TM.getRegisterInfo();
 
-*** But FastISel can't compile any non-trivial program anyway, so it doesn't seem to help.
+*** But FastISel can't compile any non-trivial program anyway, so it doesn't seem to help
 
 $ cat test.rs
 fn main () {
@@ -78,8 +78,194 @@ Stack dump:
 1.	Running pass 'X86 DAG->DAG Instruction Selection' on function '@_ZN4main17_f8ae15773a042ac13_00E'
 Aborted (core dumped)
 
+*** It can at least do basic arithmetic
+
+$ cat test.rs
+fn main () {
+    let mut a = 5, b = 6;
+    a += b;
+    os::set_exit_status(a);
+}
+
+$ rustc test.rs
+Elliott: This is SelectionDAGISel.
+Elliott: -fast-isel is 1.
+Elliott: -fast-isel-abort is 1.
+[...]
+
+$ ./test; echo $?
+11
+
+*** 37% of the tests pass in rust/src/test/run-pass
+*** A lot of tests seem to be failing from store instructions
+**** store { i8*, i32 } %9, { i8*, i32 }* %2
+**** Looks like the unwind handler for a call, because this is preceded by
+
+    ; <label>:4                                       ; preds = %3
+      %5 = call i8* @upcall_str_new_uniq(i8* getelementptr inbounds ([3 x i8]* @str1, i32 0, i32 0), i32 2)
+      %6 = bitcast i8* %5 to { i32, %tydesc*, i8*, i8*, { i32, i32, [0 x i8] } } addrspace(1)*
+      invoke void @_ZN2io7println17_7bd51147c9de282c3_02E(i1* undef, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* undef, { i32, %tydesc*, i8*, i8*, { i32, i32, [0 x i8] } } addrspace(1)* %6)
+>>>>          to label %7 unwind label %8                                                           <<<< note unwind label
+
+    ; <label>:7                                       ; preds = %4
+      br label %14
+
+    ; <label>:8                                       ; preds = %4
+      %9 = landingpad { i8*, i32 } personality i32 ()* @upcall_rust_personality
+              cleanup
+      call void @upcall_reset_stack_limit()
+>>>>  store { i8*, i32 } %9, { i8*, i32 }* %2                                                       <<<< error here
+      br label %10
+
+    ; <label>:10                                      ; preds = %8
+      %11 = bitcast { i32, %tydesc*, i8*, i8*, { i32, i32, [0 x i8] } } addrspace(1)* %6 to i8*
+>>>>  call void @glue_free3(i1* null, i1* null, %tydesc** null, i8* %11)                            <<<< clean up memory
+      %12 = load { i8*, i32 }* %2
+      resume { i8*, i32 } %12
+    
+    ; <label>:13                                      ; preds = %14
+>>>>  br label %return                                                                              <<<< success return path
+
+    ; <label>:14                                      ; preds = %7
+      %15 = bitcast { i32, %tydesc*, i8*, i8*, { i32, i32, [0 x i8] } } addrspace(1)* %6 to i8*
+      call void @glue_free3(i1* null, i1* null, %tydesc** null, i8* %15)
+      br label %13
+
 ** Need to grill Patrick (pcwalton) again to figure out which of his branches I'm interested in
 *** gc? (11 months old)
 *** backpointers? (20 months old)
 *** unique-imm? (10 months old)
 *** Others don't look relevant.
+* 2012-06-21: Notes to self
+** Continued ISel hacking
+*** Store instructions come from stack unwinding (get_landing_pad in rustc/middle/trans/base.rs)
+**** invoke is an LLVM instruction which branches when an exception is hit
+**** landingpad is an LLVM instruction which returns the exception data
+**** resume is an LLVM instruction which resumes unwinding the stack
+**** Some runtime functions interact with exception handling
+***** upcall_reset_stack_limit / upcalls.reset_stack_limit -- for fiddling with the Rust stack
+***** upcall_rust_personality / upcalls.rust_personality -- returns exception handler metadata
+*** I replaced the failing store instruction with the following
+
+  %v1 = extractvalue { i8*, i32 } %9, 0
+  %v2 = extractvalue { i8*, i32 } %9, 1
+  %p1 = getelementptr { i8*, i32 }* %2, i32 0, i32 0
+  %p2 = getelementptr { i8*, i32 }* %2, i32 0, i32 1
+  store i8* %v1, i8** %p1
+  store i32 %v2, i32* %p2
+; store { i8*, i32 } %9, { i8*, i32 }* %2
+
+*** And now it fails on the landingpad instruction
+
+%8 = landingpad { i8*, i32 } personality i32 ()* @upcall_rust_personality cleanup
+
+*** I'm pretty sure there's no way to get around this one
+* 2012-06-21: Chat with Patrick (pcwalton)
+** Rust currently uses landing pads and DWARF C++ exception handlers to free unique pointers (~) (i.e. exchange heaps)
+** But errors are non-recoverable anyway (try/catch only at task call boundaries), so we really don't need anything that fancy
+** Walk the stack to find free unique pointers (~) and free them (and delete the landing pads)
+** Patrick already has a branch with the GC changes necessary to start work on this
+*** https://github.com/pcwalton/llvm/tree/noteroots-ir
+*** But it only supports FastISel, so you're going to have to start there
+*** (I'm still not sure I understand *what* these GC changes are exactly, but whatever)
+** Initial step is to set up the basic stack walking and cleanup
+*** Add gc "generic" (<== name of the gc he wrote) to functions
+**** This should add stack maps to generated assembly for these functions
+*** Simple test program
+
+let x : ~int = 3; // Create a unique box with 3 in it
+fail;             // Then crash and see what happens
+
+* 2012-06-21: Notes to self
+** Progress (or not)
+*** Downloaded pcwalton's llvm branch
+*** His branch had an issue with LLVMLinkModules being linked multiple times, but I think I fixed it (by deleting the rust copy, which didn't appear to be used anyway)
+*** Rust build is crashing in Live IR Variables pass, which is something pcwalton added
+**** Here's the backtrace
+
+#0  0xb4be87a0 in llvm::Value::getValueID (this=0x0) at /home/elliottslaughter/rust/src/llvm/include/llvm/Value.h:228
+#1  0xb4be8945 in llvm::Instruction::getOpcode (this=0x0) at /home/elliottslaughter/rust/src/llvm/include/llvm/Instruction.h:82
+#2  0xb4be895b in llvm::Instruction::isTerminator (this=0x0) at /home/elliottslaughter/rust/src/llvm/include/llvm/Instruction.h:85
+#3  0xb4be9261 in llvm::TerminatorInst::classof (I=0x0) at /home/elliottslaughter/rust/src/llvm/include/llvm/InstrTypes.h:78
+#4  0xb4bfc58c in llvm::isa_impl<llvm::TerminatorInst, llvm::Instruction>::doit (Val=...) at /home/elliottslaughter/rust/src/llvm/include/llvm/Support/Casting.h:50
+#5  0xb4bf9057 in llvm::isa_impl_cl<llvm::TerminatorInst, llvm::Instruction*>::doit (Val=0x0) at /home/elliottslaughter/rust/src/llvm/include/llvm/Support/Casting.h:68
+#6  0xb4bf3ed4 in llvm::isa_impl_wrap<llvm::TerminatorInst, llvm::Instruction*, llvm::Instruction*>::doit (Val=@0xb40febdc: 0x0) at /home/elliottslaughter/rust/src/llvm/include/llvm/Support/Casting.h:99
+#7  0xb4bef425 in llvm::isa<llvm::TerminatorInst, llvm::Instruction*> (Val=@0xb40febdc: 0x0) at /home/elliottslaughter/rust/src/llvm/include/llvm/Support/Casting.h:110
+#8  0xb541b825 in llvm::dyn_cast<llvm::TerminatorInst, llvm::Instruction*> (Val=@0xb40febdc: 0x0) at /home/elliottslaughter/rust/src/llvm/include/llvm/Support/Casting.h:220
+#9  0xb54e68eb in llvm::BasicBlock::getTerminator (this=0xb1ff7734) at /home/elliottslaughter/rust/src/llvm/lib/VMCore/BasicBlock.cpp:122
+#10 0xb4ca56e9 in llvm::succ_begin (BB=0xb1ff7734) at /home/elliottslaughter/rust/src/llvm/include/llvm/Support/CFG.h:227
+#11 0xb50330f5 in llvm::LiveIRVariables::computeBackAndIncomingEdges (this=0xb1e81da8, F=...) at /home/elliottslaughter/rust/src/llvm/lib/CodeGen/LiveIRVariables.cpp:92
+#12 0xb5032e56 in llvm::LiveIRVariables::runOnFunction (this=0xb1e81da8, F=...) at /home/elliottslaughter/rust/src/llvm/lib/CodeGen/LiveIRVariables.cpp:59
+#13 0xb55e4514 in llvm::FPPassManager::runOnFunction (this=0xb3ccb810, F=...) at /home/elliottslaughter/rust/src/llvm/lib/VMCore/PassManager.cpp:1479
+#14 0xb55e46d0 in llvm::FPPassManager::runOnModule (this=0xb3ccb810, M=...) at /home/elliottslaughter/rust/src/llvm/lib/VMCore/PassManager.cpp:1499
+#15 0xb55e49ae in llvm::MPPassManager::runOnModule (this=0xb2ff4e18, M=...) at /home/elliottslaughter/rust/src/llvm/lib/VMCore/PassManager.cpp:1553
+#16 0xb55e4e58 in llvm::PassManagerImpl::run (this=0xb2e86858, M=...) at /home/elliottslaughter/rust/src/llvm/lib/VMCore/PassManager.cpp:1636
+#17 0xb55e4ff5 in llvm::PassManager::run (this=0xb2e52990, M=...) at /home/elliottslaughter/rust/src/llvm/lib/VMCore/PassManager.cpp:1665
+#18 0xb4bcda09 in LLVMRustWriteOutputFile (PMR=0xb2e52990, M=0xb2eaf120, triple=0xb41037c0 "i686-unknown-linux-gnu",
+    path=0xb212b820 "i686-unknown-linux-gnu/stage1/lib/rustc/i686-unknown-linux-gnu/lib/libcore.o", FileType=llvm::TargetMachine::CGFT_ObjectFile, OptLevel=llvm::CodeGenOpt::None,
+    EnableSegmentedStacks=true) at /home/elliottslaughter/rust/src/rustllvm/RustWrapper.cpp:101
+#19 0xb6cb7530 in LLVMRustWriteOutputFile__c_stack_shim () from /home/elliottslaughter/rust/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.2.so
+#20 0xb615190f in __morestack () from /home/elliottslaughter/rust/i686-unknown-linux-gnu/stage1/bin/../lib/librustrt.so
+
+*** Yup, sounds like fun (or not)
+* 2012-06-22: Notes to self
+** Debugging Live IR Variables (llvm/lib/CodeGen/LiveIRVariables.cpp)
+*** Crash computeBackAndIncomingEdges appears to come from having a BB with a null pointer in its instruction list
+*** Noticed SmallVector<16> and SmallSet<16>, and function has more than 16 BBs
+**** Tried 64 instead of 16, and crash was delayed for about 20 more functions
+**** But the API claims it will allocate heap space when fixed stack space is used up, so how on earth does this matter?
+**** Maybe there is some other memory corruption and I'm just avoiding it with extra padding?
+**** Could it be inserting into the vector while iterating it?
+
+for (SmallVector<BasicBlock *, 64>::iterator BBI = WorkList.begin();
+                                             BBI != WorkList.end(); ++BBI) {
+  // ...
+  for (succ_iterator SI = succ_begin(*BBI),
+                     SE = succ_end(*BBI); SI != SE; ++SI) {
+     // ...
+
+     WorkList.push_back(*SI);
+  }
+}
+
+*** Crash moved down to computeReachableBackEdges (_ZN3int5range17_6b446dc7ab6447ad3_02E)
+**** Assertion `t <= i && "Theorem 3 was violated!"' failed
+**** Problem appears to be (at least partially) upstream of the assertion failure
+*** Graphviz diagram for the block control flow
+
+digraph _ZN3int5range17_6b446dc7ab6447ad3_02E {
+
+bb0 -> bb1
+bb1 -> bb2
+bb2 -> bb3
+bb3 -> bb4
+bb4 -> bb5
+bb4 -> bb9
+bb5 -> bb6
+bb6 -> bb7
+bb7 -> bb8
+bb7 -> bb11
+bb8 -> bb9
+bb9 -> bb10
+bb11 -> bb12
+bb12 -> bb4
+
+}
+
+*** Problems I found in the reachability algorithms
+**** Take this all with a grain of salt because I'm still not sure how this is being used
+**** computeBackAndIncomingEdges has an issue where it will find back edges in a DAG with no cycles
+***** Changed BFS to DFS to allow me to track the path to the current node for cycle detection
+**** computeTopologicalOrdering has an issue where it is ordering nodes incorrectly
+***** Actually that problem is in computeBackAndIncomingEdges because the incoming counts are wrong (need to count edges from nodes we've already visited, but NOT if they're on the path to the current node)
+*** Now the results look right for that function, but it's crashing later on (in a debug function???)
+**** Backtrace
+
+#0  0xb4f53adb in llvm::BitVector::find_first (this=0xb3299ef4) at /home/elliottslaughter/rust/src/llvm/include/llvm/ADT/BitVector.h:146
+#1  0xb50353c6 in llvm::LiveIRVariables::isLiveIn (this=0xb21c0b68, V=..., BB=...) at /home/elliottslaughter/rust/src/llvm/lib/CodeGen/LiveIRVariables.cpp:272
+#2  0xb50358ce in llvm::LiveIRVariables::dump (this=0xb21c0b68, F=..., IncludeDead=false) at /home/elliottslaughter/rust/src/llvm/lib/CodeGen/LiveIRVariables.cpp:351
+#3  0xb5033fe4 in llvm::LiveIRVariables::runOnFunction (this=0xb21c0b68, F=...) at /home/elliottslaughter/rust/src/llvm/lib/CodeGen/LiveIRVariables.cpp:68
+
+*** Turned off debugging, problem "solved"
+*** Rustc now compiles itself!!!
+*** (Virtual) Tomorrow (a.k.a. Monday): Cleanup patches to make rustc work with the new llvm, then move on to turning on GC on functions
