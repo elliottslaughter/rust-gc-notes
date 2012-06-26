@@ -269,3 +269,70 @@ bb12 -> bb4
 *** Turned off debugging, problem "solved"
 *** Rustc now compiles itself!!!
 *** (Virtual) Tomorrow (a.k.a. Monday): Cleanup patches to make rustc work with the new llvm, then move on to turning on GC on functions
+* 2012-06-25: Notes to self
+** First pass turning on GC "generic"
+*** Rustc can't be compiled because SelectionDAG doesn't know what to do about gcregroot intrinsics, and FastISel can't handle other things (sdiv)
+*** Maybe do proper command line parsing rather than mashing the value of -fast-isel-abort to true?
+**** Hoping that the FastISel can handle the gcregroot intrinsics and leave everything else to the SelectionDAG
+**** No, SelectionDAG still gets confused, even when delegating to FastISel
+*** Maybe I could add a flag to rustc to enable GC "generic"?
+**** I added a --gc flag to rustc to turn on GC. Moving along now.
+*** Failed compile box.rs with GC: upcall_fail requires a landing pad
+
+fn main() {
+  let x = ~3;
+  fail;
+}
+
+*** Potential ways forward?
+**** Fix SelectDAG for new GC intrinsics
+**** Rip out error handling and write the stack walker
+*** Random questions
+**** Does it really make any sense to mark unique pointers as GC roots? They're not going to be GC'd.
+**** Does the existing "generic" GC generate any GC roots? Don't we need to generate those in rustc?
+***** The GCStrategy appears to add GC roots itself.
+**** Where is does the stack map go and what format do we generate it in? Does it contain any sort of type information?
+***** See llvm/lib/CodeGen/AsmPrinter/GenericGCPrinter.cpp
+***** Look for frametable at the end of the data section
+**** What are the semantics of gcregroot? How will we access values in registers? Will we write the registers to the stack map? We can't actually safely run the GC without dumping these to memory anyway, right?
+***** My best guess is the callee saves the registers before initiating any GC. Then the GC needs to know where those got put on the stack.
+* 2012-06-26: Notes to self
+** Adgenda
+*** Find stack map and make sure it gets in the binary
+*** Write stack walker for runtime
+*** Delete C++ error handler and see if that lets me compile things (albeit with memory leaks)
+*** Fix memory leaks by using stack walker to clean up unique pointers
+** Progress?
+*** Stack map format (llvm/lib/CodeGen/AsmPrinter/GenericGCPrinter.cpp)
+
+Symbol: '_gc_metadata' + mangled(fn_name)
+
+struct function_metadata {
+  .align(pointer)
+  num_callee_saved_regs : i32
+  num_safe_points       : i32
+
+  // callee saved regs
+  stack_offsets         : [i32 * num_callee_saved_regs]
+  register              : [i8 * num_callee_saved_regs]
+
+  // safe points
+  .align(pointer)
+  safe_point_address    : [pointer * num_safe_points]
+  safe_point_symbol     : [pointer * num_safe_points]
+  safe_points_info      : [safe_point * num_safe_points]
+
+  struct safe_point {
+    num_stack_roots     : i32
+    num_reg_roots       : i32
+
+    stack_roots         : [i32 * num_stack_roots]
+    reg_roots           : [i8 * num_reg_roots]
+    address_space       : [i8 * (num_stack_roots + num_reg_roots)]
+
+    initer_zext_value   : [i8]
+  }
+}
+
+*** To list symbols: objdump --syms <binary>
+*** To get data section contents: objdump -s -j .data <binary>
