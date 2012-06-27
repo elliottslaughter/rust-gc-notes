@@ -302,7 +302,7 @@ fn main() {
 *** Write stack walker for runtime
 *** Delete C++ error handler and see if that lets me compile things (albeit with memory leaks)
 *** Fix memory leaks by using stack walker to clean up unique pointers
-** Progress?
+** Progress
 *** Stack map format (llvm/lib/CodeGen/AsmPrinter/GenericGCPrinter.cpp)
 
 Symbol: '_gc_metadata' + mangled(fn_name)
@@ -336,3 +336,23 @@ struct function_metadata {
 
 *** To list symbols: objdump --syms <binary>
 *** To get data section contents: objdump -s -j .data <binary>
+** Chat with Patrick and Brian
+*** Patrick gave me access to his llvm fork on github so I can push fixes to Live IR Variables
+*** libcore currently contains a basic stack walker that just chases frame pointers
+*** ./configure --disable-manage-submodules to stop rust from messing with your submodules
+*** For error handling, add a -Z no-landing-pads flag to turn off landing pads
+*** The new error handling will run on the rust stack without needing C++ exceptions
+**** Instead of fail turning into a call to C++ upcall_fail(), it will call a rust function fail()
+**** Then you'll walk the stack in rust code, clean everything up, and issue a context switch back into the scheduler
+** New Adgenda
+*** Try core::walk_stack (without GC, because this is a rust call)
+*** Add flag to turn off landing pads
+*** Use core::walk_stack to print GC roots (requires landing pads be off)
+** Progress (again)
+*** core::walk_stack doesn't actually work as advertised
+**** frame_address intrinsic never calls closure
+**** Name mangling is failing, causing the frame_address intrinsic and its wrapper to be called by the same name
+***** Note: This is because internally trans inserts another wrapper for intrinsics (that is, we have *two* wrappers, and they have the same name)
+**** Workaround is to rename frame_address wrapper in libcore/stackwalk.rs
+**** Permanent solution is probably to fix intrinsic mangling in rustc/middle/trans/base.rs
+**** Bailing for now, I have a workaround, so I'll let someone else fix this
