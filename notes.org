@@ -356,3 +356,45 @@ struct function_metadata {
 **** Workaround is to rename frame_address wrapper in libcore/stackwalk.rs
 **** Permanent solution is probably to fix intrinsic mangling in rustc/middle/trans/base.rs
 **** Bailing for now, I have a workaround, so I'll let someone else fix this
+* 2012-06-29: Notes to self
+** Adgenda
+*** Add flag to turn off landing pads
+*** Use core::walk_stack to print GC roots (requires landing pads be off)
+** Progress
+*** Turning off landing pads
+**** rustc/middle/trans/base.rs has a function needs_invoke which looks like the right place
+**** It works!!! I got a memory leak!
+
+$ cat unique-box.rs
+fn main() {
+  let x = ~3;
+  fail;
+}
+
+$ rustc --gc -Z no-landing-pads unique-box.rs
+unique-box.rs:2:6: 2:7 warning: unused variable: `x`
+unique-box.rs:2   let x = ~3;
+                      ^
+$ ./unique-box
+rust: upcall fail 'explicit failure', unique-box.rs:3
+rust: domain main @0x9944ed0 root task failed
+leaked memory in rust main loop (1 objects)
+unique-box: /home/elliottslaughter/rust/src/rt/memory_region.cpp:172: memory_region::~memory_region(): Assertion `false' failed.
+Aborted (core dumped)
+
+*** Printing GC roots
+**** GC lowering is crashing due to reinterpret_cast
+
+rustc: /home/elliottslaughter/rust/src/llvm/include/llvm/Support/Casting.h:194: typename llvm::cast_retty<To, From>::ret_type llvm::cast(const Y&) [with X = llvm::PointerType, Y = llvm::Type*, typename llvm::cast_retty<To, From>::ret_type = llvm::PointerType*]: Assertion `isa<X>(Val) && "cast<Ty>() argument of incompatible type!"' failed.
+Stack dump:
+0.      Running pass 'Function Pass Manager' on module 'stack-test.rc'.
+1.      Running pass 'Lower Garbage Collection Instructions' on function '@_ZN3bar4anonE'
+Aborted (core dumped)
+
+**** Removing the reinterpret_cast fixes the problem, but then I can't use the value
+**** Looks like it's coming from LowerIntrinsics::InsertRootInitializers
+***** Need to read that code, not sure what's going on
+*** Also found a bug in LowerIntrinsics::PerformDefaultLowering
+**** Loop iterator bounds getting mixed up
+**** I hope this fixes the other problem, but I wouldn't bet on it
+*** In other news, 80% of tests can be compiled with --gc -Z no-landing-pads
