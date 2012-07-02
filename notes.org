@@ -398,3 +398,14 @@ Aborted (core dumped)
 **** Loop iterator bounds getting mixed up
 **** I hope this fixes the other problem, but I wouldn't bet on it
 *** In other news, 80% of tests can be compiled with --gc -Z no-landing-pads
+* 2012-07-02: Notes to self
+** Adgenda
+*** Fix GCStrategy so that I can walk the stack
+*** Print roots with stalk walker
+** Progress
+*** InsertRootInitializer is seeing an alloca of a struct as a GC root
+**** Since it assumes all roots are pointers, we're getting a cast failure
+**** But why are we marking the alloca as a root in the first place?
+**** In PerformDefaultLowering, llvm::Value::stripPointerCasts removes the getElementPtrInst which marks the field in the struct which is the root
+**** For the moment I have added stripPointerCastsOnly which does not remove getElementPtrInsts, even with all-zero arguments
+**** Need to decide whether to keep this or move elsewhere
