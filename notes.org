@@ -430,4 +430,99 @@ Aborted (core dumped)
 **** Need to merge stack maps at runtime for dynamically linked crates
 *** My fix for alloca GC roots (i.e. all roots must be pointers) sounds reasonable
 ** Progress
-*** Fixed a bug in my stack map printer
+*** What is the format of the crate map? (TBD)
+*** Imagine the following stack map ABI
+
+_gc_metadata_somefn1:
+   stack_map
+_gc_metadata_somefn2:
+   stack_map
+_rust_crate_map_toplevel:
+   ...
+   num_safe_point_addrs
+   { safe_point_addr, gc_metadata_ptr } * num_ret_addrs   // sorted by safe_point_addr
+
+** Chat with Patrick (pcwalton) and Brian (brson)
+*** Elliott: How can I put GC metadata in the crate map when the GC metadata is created as part of an LLVM optimization pass?
+*** Patrick: Put an extern symbol in the crate map for the GC metadata and fill it in from the LLVM side.
+*** (This means any safe point sorting or other fanciness will need to be done in the GCGenericPrinter.)
+** Progress
+*** Since crate map will only have a pointer, I can put it off and work on GCGenericPrinter instead
+*** Stack map ABI Options
+**** Sorted safe point => fn stack map
+
+_gc_metadata_somefn1:
+   stack_map
+_gc_metadata_somefn2:
+   stack_map
+_gc_metadata_toplevel:
+   num_safe_point_addrs
+   { safe_point_addr, fn_info } * num_ret_addrs   // sorted by safe_point_addr
+_rust_crate_map_toplevel:
+   ...
+   gc_metadata_toplevel_ptr
+
+***** Still have to rescan safe points once you get to the stack map for a function
+***** O(log(N) * k) where N is total number of safe points and k is safe points in specific function
+**** Sorted safe point => safe point map => fn stack map
+
+_gc_metadata_somefn1:
+   stack_map contains:
+_gc_metadata_somefn1_safepoint0:
+   safe_point
+_gc_metadata_somefn2:
+   stack_map contains:
+_gc_metadata_somefn2_safepoint0:
+   safe_point
+
+_gc_metadata_toplevel:
+   num_safe_point_addrs
+   { safe_point_addr, safe_point_info } * num_ret_addrs   // sorted by safe_point_addr
+_rust_crate_map_toplevel:
+   ...
+   gc_metadata_toplevel_ptr
+
+***** Forces double dereference to get to fn metadata
+***** O(log(N) * 1 * 1)
+***** Need symbols for every single safe point in module?
+**** Sorted safe point (+ fn stack map pointer) => safe point map => fn stack map
+
+_gc_metadata_somefn1:
+   stack_map contains:
+_gc_metadata_somefn1_safepoint0:
+   safe_point
+_gc_metadata_somefn2:
+   stack_map contains:
+_gc_metadata_somefn2_safepoint0:
+   safe_point
+
+_gc_metadata_toplevel:
+   num_safe_point_addrs
+   { safe_point_addr, safe_point_info, fn_info } * num_ret_addrs   // sorted by safe_point_addr
+_rust_crate_map_toplevel:
+   ...
+   gc_metadata_toplevel_ptr
+
+***** Single dereference to get to fn metadata, but safe point list is now 50% longer (bad for binary search?)
+***** Still O(log(N) * 1 * 1)
+**** But if you really wanted to avoid bloating the sorted safe point list, you could always use parallel arrays
+
+_gc_metadata_somefn1:
+   stack_map contains:
+_gc_metadata_somefn1_safepoint0:
+   safe_point
+_gc_metadata_somefn2:
+   stack_map contains:
+_gc_metadata_somefn2_safepoint0:
+   safe_point
+
+_gc_metadata_toplevel:
+   num_safe_point_addrs
+   safe_point_addr * num_ret_addrs   // sorted by safe_point_addr
+   safe_point_info * num_ret_addrs   // parallel array
+   fn_info         * num_ret_addrs   // parallel array
+_rust_crate_map_toplevel:
+   ...
+   gc_metadata_toplevel_ptr
+
+**** Note that we already seem to have symbols for each safe point
