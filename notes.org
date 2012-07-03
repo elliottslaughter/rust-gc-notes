@@ -318,24 +318,27 @@ struct function_metadata {
 
   // safe points
   .align(pointer)
-  safe_point_address    : [pointer * num_safe_points]
-  safe_point_symbol     : [pointer * num_safe_points]
-  safe_points_info      : [safe_point * num_safe_points]
+  safe_point_name       : [sp_name * num_safe_points]
+  safe_points_info      : [sp_info * num_safe_points]
 
-  struct safe_point {
+  struct sp_name {
+    safe_point_address    : pointer
+    safe_point_symbol     : pointer
+  }
+
+  struct sp_info {
+    .align(pointer)
     num_stack_roots     : i32
     num_reg_roots       : i32
 
-    stack_roots         : [i32 * num_stack_roots]
+    stack_root_offsets  : [i32 * num_stack_roots]
     reg_roots           : [i8 * num_reg_roots]
     address_space       : [i8 * (num_stack_roots + num_reg_roots)]
-
-    initer_zext_value   : [i8]
   }
 }
 
 *** To list symbols: objdump --syms <binary>
-*** To get data section contents: objdump -s -j .data <binary>
+*** To get data section contents: objdump --full-contents --section=.data <binary>
 ** Chat with Patrick and Brian
 *** Patrick gave me access to his llvm fork on github so I can push fixes to Live IR Variables
 *** libcore currently contains a basic stack walker that just chases frame pointers
@@ -409,3 +412,22 @@ Aborted (core dumped)
 **** In PerformDefaultLowering, llvm::Value::stripPointerCasts removes the getElementPtrInst which marks the field in the struct which is the root
 **** For the moment I have added stripPointerCastsOnly which does not remove getElementPtrInsts, even with all-zero arguments
 **** Need to decide whether to keep this or move elsewhere
+*** Printing stack map
+**** In C, because it's too painful to do in Rust
+**** Next I need to figure out how to tell what function I'm in
+* 2012-07-03: Notes to self
+** Adgenda
+*** Map out stack (on paper)
+*** How do I tell what function I am in?
+*** Print roots for each function on stack
+*** llvm::Value::stripPointerCastsOnly?
+** Chat with Patrick (pcwalton)
+*** Dump a sorted list of all possible return addresses for a function
+**** Then we can binary search this list
+*** But we need this in a global table so we can search it
+**** We already have a crate-global table called the crate map (__crate_map)
+**** Dump the stack map into the crate map, this can happen at compile time for static crates
+**** Need to merge stack maps at runtime for dynamically linked crates
+*** My fix for alloca GC roots (i.e. all roots must be pointers) sounds reasonable
+** Progress
+*** Fixed a bug in my stack map printer
