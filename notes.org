@@ -526,3 +526,11 @@ _rust_crate_map_toplevel:
    gc_metadata_toplevel_ptr
 
 **** Note that we already seem to have symbols for each safe point
+* 2012-07-05: Notes to self
+** Adgenda
+*** Update GCGenericPrinter for new stack map ABI (with sorted index of safe points)
+*** Print roots for each function on stack (finally?)
+** Progress
+*** Added module metadata to GenericGCMetadataPrinter to write out the safe point list, currently *unsorted*
+*** Now I can print which safe point each return address belongs to
+**** Still some confusion about exactly which stack entries are what and which return address refers to which stack frame
