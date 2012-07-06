@@ -533,4 +533,12 @@ _rust_crate_map_toplevel:
 ** Progress
 *** Added module metadata to GenericGCMetadataPrinter to write out the safe point list, currently *unsorted*
 *** Now I can print which safe point each return address belongs to
-**** Still some confusion about exactly which stack entries are what and which return address refers to which stack frame
+*** And I can walk the safe point metadata to get the list of stack roots, and find them on the stack
+*** Next I need to figure out what I am pointing to
+** Chat with Patrick (pcwalton) and Brian (brson)
+*** Every non-trivial Rust type contains a header with type information (see "rust shape")
+**** The C++ library should have a function to print out the type information ("upcall_log_type")
+**** This code is currently being rewritten, but the replacement isn't ready yet
+*** Each type will have its own destructor ("drop"); there will be a pointer to this type in the type header
+**** These might be bare functions; if so, you will need to construct a closure (two words, according to Brian) to call it
+**** Need to check what stack to run them on; if Rust, need Rust stack, if C, need C stack
