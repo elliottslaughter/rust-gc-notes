@@ -542,3 +542,62 @@ _rust_crate_map_toplevel:
 *** Each type will have its own destructor ("drop"); there will be a pointer to this type in the type header
 **** These might be bare functions; if so, you will need to construct a closure (two words, according to Brian) to call it
 **** Need to check what stack to run them on; if Rust, need Rust stack, if C, need C stack
+* 2012-07-06: Notes to self
+** Adgenda
+*** Look at shape code to find the drop method for each stack root
+*** Figure out how to do register roots
+*** Try to write c_fail so that we can test proper deallocation
+*** Eventually sort stack roots so we can do a binary search
+** Progress
+*** Rust shape relevant files
+**** rustc/middle/trans/shape.rs -- compiler-side generation of shapes
+**** rt/rust_shape.h -- runtime-side interpretation of shapes
+***** See shape_log_type
+**** rt/rust_type.h -- layout of data
+***** See rust_opaque_box and type_desc, et al
+*** Looks like the type_desc contained in a box refers to the contained type, not the container type
+**** Location of the pointer to the type_desc varies by type (e.g. box vs closure)
+**** I'm guessing the compiler doesn't care because we normally have static type information available
+**** It would be really nice to have a pointer to type_desc in the stack map
+** Chat with Patrick (pcwalton)
+*** Closures shouldn't be a problem, we'll root the env if we need to GC anything
+*** Also, GC should only ever look at things in addrspace 1, since these may include e.g. closures, references to values owned elsewhere
+** Progress
+*** Moved more of the stack walking into rust
+*** Bug where second box parameter on stack is never returned as a root
+**** The second box here (a unique) does NOT show up
+
+fn foo (x : i32) -> i32 {
+    let y = @123;
+    let z = ~123;
+    let w = bar(x, y, z);
+    baz(w, 456)
+}
+
+fn bar (x : i32, y : @i32, z : ~i32) -> i32 {
+    my_fail();
+    x + *y + *z+ 7
+}
+
+fn baz (x : i32, y : i32) -> i32 {
+    x + y + 23
+}
+
+**** But this unique DOES show up?
+
+fn foo (x : i32) -> i32 {
+    let y = ~123;
+    let w = bar(x, y);
+    baz(w, 456)
+}
+
+fn bar (x : i32, y : ~i32) -> i32 {
+    my_fail();
+    x + *y + 7
+}
+
+fn baz (x : i32, y : i32) -> i32 {
+    x + y + 23
+}
+
+**** This can be reproduced with all task-local boxes
