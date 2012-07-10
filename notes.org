@@ -1,4 +1,4 @@
-* 2012-06-19: Notes to self
+* 2012-06-19: Week 1 Tuesday
 ** FastISel
 *** Rust doesn't call SelectionDAG or FastISel directly, but through an LLVM pass.
 *** Some function is responsible for setting up the instruction selector (addISelToPass or somesuch).
@@ -17,7 +17,7 @@
 **** Finish work on SelectionDAG
 *** Unwinding
 *** ???
-* 2012-06-20: Notes to self
+* 2012-06-20: Week 1 Wednesday
 ** Still looking for the call that sets the ISel parameters
 *** The rustc backend calls addPassesToEmitFile for codegen (rustllvm/RustWrapper.cpp)
 **** ==> calls addPassesToGenerateCode
@@ -136,7 +136,7 @@ $ ./test; echo $?
 *** backpointers? (20 months old)
 *** unique-imm? (10 months old)
 *** Others don't look relevant.
-* 2012-06-21: Notes to self
+* 2012-06-21: Week 1 Thursday
 ** Continued ISel hacking
 *** Store instructions come from stack unwinding (get_landing_pad in rustc/middle/trans/base.rs)
 **** invoke is an LLVM instruction which branches when an exception is hit
@@ -160,23 +160,22 @@ $ ./test; echo $?
 %8 = landingpad { i8*, i32 } personality i32 ()* @upcall_rust_personality cleanup
 
 *** I'm pretty sure there's no way to get around this one
-* 2012-06-21: Chat with Patrick (pcwalton)
-** Rust currently uses landing pads and DWARF C++ exception handlers to free unique pointers (~) (i.e. exchange heaps)
-** But errors are non-recoverable anyway (try/catch only at task call boundaries), so we really don't need anything that fancy
-** Walk the stack to find free unique pointers (~) and free them (and delete the landing pads)
-** Patrick already has a branch with the GC changes necessary to start work on this
-*** https://github.com/pcwalton/llvm/tree/noteroots-ir
-*** But it only supports FastISel, so you're going to have to start there
-*** (I'm still not sure I understand *what* these GC changes are exactly, but whatever)
-** Initial step is to set up the basic stack walking and cleanup
-*** Add gc "generic" (<== name of the gc he wrote) to functions
-**** This should add stack maps to generated assembly for these functions
-*** Simple test program
+** Chat with Patrick (pcwalton)
+*** Rust currently uses landing pads and DWARF C++ exception handlers to free unique pointers (~) (i.e. exchange heaps)
+*** But errors are non-recoverable anyway (try/catch only at task call boundaries), so we really don't need anything that fancy
+*** Walk the stack to find free unique pointers (~) and free them (and delete the landing pads)
+*** Patrick already has a branch with the GC changes necessary to start work on this
+**** https://github.com/pcwalton/llvm/tree/noteroots-ir
+**** But it only supports FastISel, so you're going to have to start there
+**** (I'm still not sure I understand *what* these GC changes are exactly, but whatever)
+*** Initial step is to set up the basic stack walking and cleanup
+**** Add gc "generic" (<== name of the gc he wrote) to functions
+***** This should add stack maps to generated assembly for these functions
+**** Simple test program
 
 let x : ~int = 3; // Create a unique box with 3 in it
 fail;             // Then crash and see what happens
 
-* 2012-06-21: Notes to self
 ** Progress (or not)
 *** Downloaded pcwalton's llvm branch
 *** His branch had an issue with LLVMLinkModules being linked multiple times, but I think I fixed it (by deleting the rust copy, which didn't appear to be used anyway)
@@ -208,7 +207,7 @@ fail;             // Then crash and see what happens
 #20 0xb615190f in __morestack () from /home/elliottslaughter/rust/i686-unknown-linux-gnu/stage1/bin/../lib/librustrt.so
 
 *** Yup, sounds like fun (or not)
-* 2012-06-22: Notes to self
+* 2012-06-22: Week 1 Friday
 ** Debugging Live IR Variables (llvm/lib/CodeGen/LiveIRVariables.cpp)
 *** Crash computeBackAndIncomingEdges appears to come from having a BB with a null pointer in its instruction list
 *** Noticed SmallVector<16> and SmallSet<16>, and function has more than 16 BBs
@@ -269,7 +268,7 @@ bb12 -> bb4
 *** Turned off debugging, problem "solved"
 *** Rustc now compiles itself!!!
 *** (Virtual) Tomorrow (a.k.a. Monday): Cleanup patches to make rustc work with the new llvm, then move on to turning on GC on functions
-* 2012-06-25: Notes to self
+* 2012-06-25: Week 2 Monday
 ** First pass turning on GC "generic"
 *** Rustc can't be compiled because SelectionDAG doesn't know what to do about gcregroot intrinsics, and FastISel can't handle other things (sdiv)
 *** Maybe do proper command line parsing rather than mashing the value of -fast-isel-abort to true?
@@ -296,7 +295,7 @@ fn main() {
 ***** Look for frametable at the end of the data section
 **** What are the semantics of gcregroot? How will we access values in registers? Will we write the registers to the stack map? We can't actually safely run the GC without dumping these to memory anyway, right?
 ***** My best guess is the callee saves the registers before initiating any GC. Then the GC needs to know where those got put on the stack.
-* 2012-06-26: Notes to self
+* 2012-06-26: Week 2 Tuesday
 ** Adgenda
 *** Find stack map and make sure it gets in the binary
 *** Write stack walker for runtime
@@ -359,7 +358,7 @@ struct function_metadata {
 **** Workaround is to rename frame_address wrapper in libcore/stackwalk.rs
 **** Permanent solution is probably to fix intrinsic mangling in rustc/middle/trans/base.rs
 **** Bailing for now, I have a workaround, so I'll let someone else fix this
-* 2012-06-29: Notes to self
+* 2012-06-29: Week 2 Friday
 ** Adgenda
 *** Add flag to turn off landing pads
 *** Use core::walk_stack to print GC roots (requires landing pads be off)
@@ -401,7 +400,7 @@ Aborted (core dumped)
 **** Loop iterator bounds getting mixed up
 **** I hope this fixes the other problem, but I wouldn't bet on it
 *** In other news, 80% of tests can be compiled with --gc -Z no-landing-pads
-* 2012-07-02: Notes to self
+* 2012-07-02: Week 3 Monday
 ** Adgenda
 *** Fix GCStrategy so that I can walk the stack
 *** Print roots with stalk walker
@@ -415,7 +414,7 @@ Aborted (core dumped)
 *** Printing stack map
 **** In C, because it's too painful to do in Rust
 **** Next I need to figure out how to tell what function I'm in
-* 2012-07-03: Notes to self
+* 2012-07-03: Week 3 Tuesday
 ** Adgenda
 *** Map out stack (on paper)
 *** How do I tell what function I am in?
@@ -526,7 +525,7 @@ _rust_crate_map_toplevel:
    gc_metadata_toplevel_ptr
 
 **** Note that we already seem to have symbols for each safe point
-* 2012-07-05: Notes to self
+* 2012-07-05: Week 3 Thursday
 ** Adgenda
 *** Update GCGenericPrinter for new stack map ABI (with sorted index of safe points)
 *** Print roots for each function on stack (finally?)
@@ -542,7 +541,7 @@ _rust_crate_map_toplevel:
 *** Each type will have its own destructor ("drop"); there will be a pointer to this type in the type header
 **** These might be bare functions; if so, you will need to construct a closure (two words, according to Brian) to call it
 **** Need to check what stack to run them on; if Rust, need Rust stack, if C, need C stack
-* 2012-07-06: Notes to self
+* 2012-07-06: Week 3 Friday
 ** Adgenda
 *** Look at shape code to find the drop method for each stack root
 *** Figure out how to do register roots
@@ -601,3 +600,49 @@ fn baz (x : i32, y : i32) -> i32 {
 }
 
 **** This can be reproduced with all task-local boxes
+* 2012-07-09: Week 4 Monday
+** Adgenda
+*** Figure out how to drop a box given it's content type
+*** Fix second box parameter bug
+*** Figure out register roots
+*** Eventually sort safe points so we can do a binary search
+** Progress
+*** I'm wondering if there is some generic drop box function I can call?
+**** i.e. I want something to recursively call the drop glue function in the tydesc and then deallocate the box
+**** Where do we generate the glue code?
+***** rustc/middle/trans/base.rs: make_drop_glue and make_free_glue
+*** What's the difference between drop and free?
+*** Do these need to be called on the Rust stack or the C stack?
+** Chat with Brian (brson)
+*** Use box annihilator (rt/rust_box_annihilator.cpp) to deallocate a box if you don't know its type
+** Progress
+*** Now have a working deallocator on fail for exchange heap roots!
+** Chat with Patrick (pcwalton)
+*** Sounds like we can't really get much further without SelectionDAG, and we'll need it eventually, so might as well do it now
+*** This might add issues with optimization
+**** Just stick with -O0 for the moment, at least we can get to the point where we can do debug builds
+**** We will need to validate every optimization one at a time to make sure it doesn't break things
+*** Some initial work is on master (pcwalton/llvm)
+**** See the most recent commit, "Beginnings of proper support without fake X86 instructions"
+**** Not exactly the same, but this is hopefully a rough guide to how to get this done
+*** Rough game plan
+**** Add an SDNode for the new GC root intrinsic
+**** Skip (a.k.a. "mark selected") for those nodes to avoid having to modify instruction selection tables
+**** Manually lower them in the machine instruction emitter
+***** This part should be identical to how we do this in the FastISel
+**** Everything else should be handled by the existing GC work
+*** Helpful tips
+**** llc has some debug options to print the selection DAG
+***** See --help-hidden, look for --view-*
+** Adgenda (Revisited)
+*** First pass on SelectionDAG for the new GC infrastructure
+*** Eventually fix second box parameter bug
+*** Eventually figure out register roots
+*** Eventually sort safe points so we can do a binary search
+** Progress
+*** Do I need to make any changes for gcroot, or are my changes exclusively for gcregroot?
+*** For that matter, do we use gcregroot that heavily in the first place?
+**** Experiment: Turn off -fast-isel-abort, and make sure optimization is off, and see how many tests pass.
+***** As long as we don't actually use gcregroot, we're fine. If we do, then we'll abort in SelectionDAG.
+***** ./configure --disable-manage-submodules --prefix=$HOME/install --disable-optimize
+***** make -j8 install && make -k RUSTFLAGS="--gc -Z no-landing-pads" check &> check-with-gc.log
