@@ -646,3 +646,51 @@ fn baz (x : i32, y : i32) -> i32 {
 ***** As long as we don't actually use gcregroot, we're fine. If we do, then we'll abort in SelectionDAG.
 ***** ./configure --disable-manage-submodules --prefix=$HOME/install --disable-optimize
 ***** make -j8 install && make -k RUSTFLAGS="--gc -Z no-landing-pads" check &> check-with-gc.log
+* 2012-07-10: Week 4 Tuesday
+** Meetings are in CYA at 9am on Tuesdays
+** Adgenda
+*** Check how far we can get without -fast-isel-abort
+*** First pass on SelectionDAG for the new GC infrastructure
+*** Eventually fix second box parameter bug
+*** Eventually figure out register roots
+*** Eventually sort safe points so we can do a binary search
+** Progress
+*** Looks like we can get away with -fast-isel-abort off, since we don't generate gcregroot most of the time at -O0
+**** > 90% of run-passes tests compile, and most of those pass
+**** A little hard to get exact numbers because one test is freezing
+***** Brian says I can add `// xfail-test` to the top of tests to skip them
+***** Also run make check with RUST_THREADS=1 to get the test runner to run in a single thread
+***** Looks like the frozen test is unwind-resources
+***** 748 tests passed, 11 failed, 1 froze up
+***** That means 98.4% of run-passes tests passed!
+***** Of those that fail, 8 have a gcregroot, 1 crashes in Lower GC Instructions pass, 1 failed because of missing landing pads, 1 failed because I leak memory, 1 failed in unicode (?)
+**** Rustc itself has enough instances of gcregroot to stop us from compiling with GC on
+** Chat with Patrick (pcwalton) and Brian (brson)
+*** Now would be a good time to move fail to rust (and punt on SelectionDAG for the moment)
+*** While we are at it, let's convert all the upcalls into rust
+*** Add an attribute to the compiler, say #[upcall("fail")] to mark each fn
+*** At the start of trans, walk every function to search for the upcall attributes, and stuff their names into a table
+**** Patrick may have a function ("hpath"), which is a part of resolve3, which already does this
+*** Then when we trans upcalls, make them normal rust calls instead of C calls
+*** Alternatively, (as a start) we could hard code function names in trans (fail -> core::upcall::fail, etc.)
+** Adgenda (Revisited)
+*** Switch upcalls to rust
+*** Everything else
+** Progress
+*** Start by wrapping rust upcalls around existing C upcalls in rt/rust_upcall.cpp
+*** #[rust_stack] ensure we call the native function on the rust stack rather than on the C stack
+*** Hitting an LLVM assertion about a type cast conflict.
+**** Rename the function inside `extern mod rustrt { ... }` fixes the issue, but then I obviously can't link
+**** Renaming the args doesn't fix it
+**** Best guess is that we're declaring upcall_fail somewhere else, and the type declarations don't match
+**** I'm too tired of dealing with this, I'll just call rust_task_fail and be done with it
+** Chat with Brian (brson)
+*** trans_crate is entry point for compiling a file
+*** each_path (need to pull incoming to get resolve3) to walk external crates
+*** visit_crate (libsyntax/visit.rs) to walk local crate
+*** check attributes with libsyntax/attr.rs
+*** build a table and stuff it into the crate context
+** Progress
+*** Added a rust_upcalls type which is intended to replace upcalls
+*** Added gather_rust_upcalls to fill rust_upcalls from the crate AST
+*** Walk all functions in crate
