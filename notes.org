@@ -693,4 +693,4 @@ fn baz (x : i32, y : i32) -> i32 {
 ** Progress
 *** Added a rust_upcalls type which is intended to replace upcalls
 *** Added gather_rust_upcalls to fill rust_upcalls from the crate AST
-*** Walk all functions in crate
+*** Walk all functions in crate, check attrs for each one, match against upcall(*)
