@@ -741,3 +741,37 @@ fn baz (x : i32, y : i32) -> i32 {
 **** Name each module's GC metadata after itself rather than _gc_metadata_toplevel
 **** Copy pointer to GC metadata into crate map
 **** Figure out how to get at the crate map inside libcore
+* 2012-07-13: Week 4 Friday
+** Adgenda
+*** Stuff GC metadata into crate map
+*** Get GC metadata out of crate map inside GC runtime
+*** Move upcall_malloc over to rust so you have an extra place to test the GC
+*** Run a bunch of tests to see if we can make things crash
+*** Cleanup for rust runtime calls patch
+**** Make rust_upcall_fail call upcall_fail so that we can break on upcall_fail in gdb
+**** Fix indentation in rust_upcall_fail
+**** Uncomment #[cfg(notest)] in core.rc
+*** Everything else
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Sort safe points so we can do a binary search
+** Progress
+*** Somehow, combining the rust runtime call patch with the GC patch causes a failure in trans_rtcall
+**** Each patch works on its own
+**** My best guess is that in trans_rtcall I'm passing an invalid node_id to lval_static_fn, which then seems to be picking up bogus type info
+**** Trying lval_static_fn_inner instead
+**** Looks like it works, passes tests
+*** Need to bug Patrick or Brian to actually look at my pull request next week
+** Next time
+*** Check that GC metadata gets into crate map properly
+*** Get GC metadata out of crate map inside GC runtime
+*** Move upcall_malloc over to rust so you have an extra place to test the GC
+*** Run a bunch of tests to see if we can make things crash
+*** Cleanup for rust runtime calls patch
+**** Uncomment #[cfg(notest)] in core.rc
+*** Everything else
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Sort safe points so we can do a binary search
