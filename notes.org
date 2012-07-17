@@ -775,3 +775,40 @@ fn baz (x : i32, y : i32) -> i32 {
 **** Fix second box parameter bug
 **** Figure out register roots
 **** Sort safe points so we can do a binary search
+* 2012-07-16: Week 5 Monday
+** Adgenda
+*** Check that GC metadata gets into crate map properly
+*** Get GC metadata out of crate map inside GC runtime
+*** Move upcall_malloc over to rust so you have an extra place to test the GC
+*** Run a bunch of tests to see if we can make things crash
+*** Read GC literature
+**** Especially the LuaJIT GC summary http://wiki.luajit.org/New-Garbage-Collector
+*** Cleanup for rust runtime calls patch
+**** Uncomment #[cfg(notest)] in core.rc
+***** Note: I can't actually seem to do this yet. I'm not sure why Brian's (brson) patch isn't in the snapshot.
+*** Everything else
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Sort safe points so we can do a binary search
+** Progress
+*** Module metadata is now getting named properly (e.g. "_gc_module_metadata_NAME")
+*** bstrie on IRC doesn't think we have any way to get at the crate map from rust code right now
+*** Need to add a C++ runtime function to return the toplevel crate map. I'll walk the crate map inside Rust code.
+*** This is getting strange. The crate map is used by the logging code and I'm not at all confident that my changes won't mess something up.
+*** Plan with crate map:
+**** Each module emits a _crate_map_* which links to its _gc_module_metdata_*
+**** Each _crate_map_* gets recursively linked into the _crate_map_toplevel
+**** At startup, rust_start will call <my GC startup function> to walk the crate map
+***** For each module with a _gc_module_metadata, append the list of safe points onto some large list
+***** Sort the list and stuff it into a global variable
+**** Return the global list with some runtime function
+*** Alternative to crate map?
+**** Each module will need a GC metadata boolean flag so rustc knows whether to expect it to have a _gc_module_metadata_* or not
+**** In rustc, when producing a binary, loop through all crates and link their _gc_module_metadata_* 's into a big list _gc_modules
+**** In rust_start, loop through all of the modules and sort their safepoints. Stuff the result into some sort of a global variable.
+**** Return the global variable inside some runtime function
+*** I'm going with the crate map for now, since I'm not sure I want to deal with module metadata
+*** Refactored crate map support from rt/rust_log.cpp to rt/rust_crate_map.cpp
+*** Added rt/rust_gc_metadata.cpp to walk and sort safe points
+*** It almost works but I forgot to put the number of safe points at the start of my vector.
