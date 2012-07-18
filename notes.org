@@ -812,3 +812,113 @@ fn baz (x : i32, y : i32) -> i32 {
 *** Refactored crate map support from rt/rust_log.cpp to rt/rust_crate_map.cpp
 *** Added rt/rust_gc_metadata.cpp to walk and sort safe points
 *** It almost works but I forgot to put the number of safe points at the start of my vector.
+* 2012-07-17: Week 5 Tuesday
+** Adgenda
+*** Move upcall_malloc and upcall_free over to rust so we have more places to test the GC
+*** Run a bunch of tests to see if we can make things crash / if data is being deallocated properly on failure
+**** I think we might have a problem with the current scheme for dropping uniques on failure
+**** The GC is too smart and (in some cases, like explicit failure) knows that that data isn't live when we hit the rt::rt_fail call
+**** So we don't see it as live inside the GC
+*** Recurse on roots to get all live pointers
+**** See https://github.com/mozilla/rust/issues/1498
+*** Walk list of allocations to see what to free
+*** Everything else
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Upcall free is working
+*** Upcall malloc is providing some opposition
+**** Getting the return value out of a function seems to require an alloca and a load after the call returns
+**** Plus, I'm creating some sort of bogus basic block, which I'm having a hard time even dumping so I can see what is wrong
+*** The problem is that malloc_* all return ValueRef's, not block's
+**** i.e. The calling code assumes the ValueRef returned is in the same block as it was hold before issuing a malloc
+**** But when I invoke a Rust function, it might not be (because of landing pads and unwind branching)
+*** Shoot, it's still failing. What now?
+*** How on earth did we manage to get to this state?
+
+The offending function. Note the br instruction at the *start* of the return BB.
+
+define void @_ZN4task7builder17_c1a43322f22768d63_03E(%"enum task::builder[#0]"*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*) uwtable {
+static_allocas:
+  %2 = alloca { void ({ void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*, { void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }
+  %3 = alloca i8*
+  store i8* null, i8** %3
+
+load_env:                                         ; No predecessors!
+
+return:                                           ; No predecessors!
+                                                  ; No predecessors!
+  br label %8
+  %5 = getelementptr inbounds { void ({ void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*, { void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }* %2, i32 0, i32 0
+  store void ({ void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*, { void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*)* @_ZN4task7builder4anonE, void ({ void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*, { void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*)** %5
+  %6 = getelementptr inbounds { void ({ void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*, { void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }* %2, i32 0, i32 1
+  %7 = bitcast { i32, %tydesc*, i1*, i1*, {} }* %12 to { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*
+  store { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* %7, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)** %6
+
+; <label>:8                                       ; preds = %4
+  call void @_ZN2rt9rt_malloc17_32adc2dfc29da2a43_03E(i8** %3, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* undef, i8* bitcast (%tydesc* @tydesc497 to i8*), i32 0)
+  br label %9
+
+; <label>:9                                       ; preds = %8
+  %10 = load i8** %3
+  %11 = bitcast i8* %10 to { i32, %tydesc*, i8*, i8*, {} } addrspace(1)*
+  %12 = bitcast { i32, %tydesc*, i8*, i8*, {} } addrspace(1)* %11 to { i32, %tydesc*, i1*, i1*, {} }*
+}
+
+What I think might be the backtrace for the malloc call preceding the failure. Not completely sure because gdb isn't exactly the most usable tool here.
+
+#0  0xb6143450 in middle::trans::base::malloc_raw::_f74abf816eaa5193::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#1  0xb629a85c in middle::trans::closure::allocate_cbox::_fddc3cda26aa0962::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#2  0xb629b1ed in middle::trans::closure::store_environment::_3a87aaf9eea043a3::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#3  0xb629deac in middle::trans::closure::build_closure::_4edfa8c550a2cf60::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#4  0xb62a3d63 in middle::trans::closure::trans_expr_fn::anon () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#5  0xb61d4711 in middle::trans::closure::trans_expr_fn::_1ec07520dc7a96c9::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#6  0xb61f83d4 in middle::trans::base::trans_expr::unrooted::_2953c9b58c9ebada::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#7  0xb6185f89 in middle::trans::base::trans_expr::_2953c9b58c9ebada::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#8  0xb61818ef in middle::trans::base::trans_expr_save_in::_8d786287e9f52495::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#9  0xb6208f2d in middle::trans::base::init_local::_c3dca81c1d809a21::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#10 0xb620afe0 in middle::trans::base::trans_stmt::anon () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#11 0xb6113c38 in vec::each5431::anon () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#12 0xb6113abb in vec::unpack_slice5432::_b0dc179760ede46f::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#13 0xb6113995 in vec::each5431::_debf995279d11c60::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#14 0xb620ae79 in middle::trans::base::trans_stmt::_808d4b78e2ec2ec9::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#15 0xb62118bb in middle::trans::base::trans_block::anon () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#16 0xb6113c38 in vec::each5431::anon () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#17 0xb6113abb in vec::unpack_slice5432::_b0dc179760ede46f::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#18 0xb6113995 in vec::each5431::_debf995279d11c60::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#19 0xb6198782 in middle::trans::base::trans_block::_e796e910a1bf5b22::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#20 0xb621dd87 in middle::trans::base::trans_closure::_ec3b6a8ffe11c15e::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#21 0xb61af41d in middle::trans::base::trans_fn::_c481c6536648532a::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#22 0xb61c0158 in middle::trans::base::trans_item::_1ffb4147b7d0d1c9::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#23 0xb622a2f3 in middle::trans::base::trans_mod::anon () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#24 0xb6113c38 in vec::each5431::anon () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#25 0xb6113abb in vec::unpack_slice5432::_b0dc179760ede46f::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#26 0xb6113995 in vec::each5431::_debf995279d11c60::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#27 0xb6229552 in middle::trans::base::trans_mod::_97f1d8e744bd5ec3::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#28 0xb61c0324 in middle::trans::base::trans_item::_1ffb4147b7d0d1c9::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#29 0xb69f13b4 in __morestack () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#30 0xb622a2f3 in middle::trans::base::trans_mod::anon () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#31 0xb6113c38 in vec::each5431::anon () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#32 0xb6113abb in vec::unpack_slice5432::_b0dc179760ede46f::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#33 0xb6113995 in vec::each5431::_debf995279d11c60::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#34 0xb6229552 in middle::trans::base::trans_mod::_97f1d8e744bd5ec3::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#35 0xb625db34 in middle::trans::base::trans_crate::_ca7290f62280ebb2::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#36 0xb69b21b9 in driver::driver::compile_upto::anon () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#37 0xb69b1971 in driver::driver::time25563::_c5c7ad722b971b2a::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#38 0xb69ac250 in driver::driver::compile_upto::_b9dbdc8c2a87d3af::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#39 0xb69f13b4 in __morestack () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#40 0xb69b29a2 in driver::driver::compile_input::_f76e3b45dfe4c695::_03 () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/librustc-73389320c1332876-0.3.so
+#41 0x08054d6e in run_compiler::_45ed1c7bbe80da16::_00 ()
+#42 0x0806aa5c in __morestack ()
+#43 0x0806a6e5 in main::anon ()
+#44 0x0806aa5c in __morestack ()
+#45 0x0806471d in monitor::anon ()
+#46 0x08062a6f in task::try588::anon ()
+#47 0xb7b8b8ea in task::spawn_raw::make_child_wrapper::anon () from /home/elliottslaughter/rust2/i686-unknown-linux-gnu/stage1/bin/../lib/libcore-d27e4777a53c3e50-0.3.so
+#48 0xb5f4c081 in task_start_wrapper (a=0xb4203cec) at /home/elliottslaughter/rust2/src/rt/rust_task.cpp:178
+#49 0x00000000 in ?? ()
+
+*** Looks like it's passing through store_environment, which indirectly calls malloc
+**** But as far as I can tell, at least at the beginning of that function, nothing has been messed up yet
