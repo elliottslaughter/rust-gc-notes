@@ -922,3 +922,4 @@ What I think might be the backtrace for the malloc call preceding the failure. N
 
 *** Looks like it's passing through store_environment, which indirectly calls malloc
 **** But as far as I can tell, at least at the beginning of that function, nothing has been messed up yet
+*** Best guess is someone is ignoring a bcx returned (and holding on to a ret_bcx value somewhere). It's probably upstream from store_environment.
