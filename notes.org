@@ -962,3 +962,38 @@ What I think might be the backtrace for the malloc call preceding the failure. N
 ***** Looks like the way to go is rustc optimization off, llvm optimization on
 ***** Although note that it fails on a different function (run::with_envp) than before
 ***** But it still has 163 basic blocks
+* 2012-07-19: Week 5 Thursday
+** Adgenda
+*** Fix bug in LLVM Live IR Variables pass when using rust rtcall for malloc
+*** Run a bunch of tests to see if we can make things crash / if data is being deallocated properly on failure
+**** I think we might have a problem with the current scheme for dropping uniques on failure
+**** The GC is too smart and (in some cases, like explicit failure) knows that that data isn't live when we hit the rt::rt_fail call
+**** So we don't see it as live inside the GC
+*** Recurse on roots to get all live pointers
+**** See https://github.com/mozilla/rust/issues/1498
+*** Walk list of allocations to see what to free
+*** Everything else
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Chat with Patrick (pcwalton)
+*** Options for resources/destructors on the stack
+**** Use metadata
+***** Emit the type_desc pointer as the metadata
+***** Requires that gcregroot support metadata
+****** Otherwise GC'd values (at least ones with metadata) will be stuck in memory and we'll lose performance
+***** Forces us to emit gcroot in rustc rather than use automatic rooting
+**** Store a shadow pointer to the resource on the stack
+***** Now we have two pointers for each resource
+***** Requires resources to be self-describing, which they probably are not currently
+**** Use different addrspaces for each type of destructor
+***** Possible collisions between addrspaces from different modules
+**** Create a new iface fast_drop which requires that the type is a pointer to a self-describing type
+***** And you can only GC types which implement fast_drop
+***** Requires a user-facing change to the language, kind of clunky
+*** Investigate the following
+**** Does gcregroot support metadata?
+**** Do we every lower gcroot into gcregroot automatically?
+***** Elliott: Presumably this would be in mem2reg, right?
+** Progress
