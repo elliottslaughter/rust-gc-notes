@@ -923,3 +923,42 @@ What I think might be the backtrace for the malloc call preceding the failure. N
 *** Looks like it's passing through store_environment, which indirectly calls malloc
 **** But as far as I can tell, at least at the beginning of that function, nothing has been messed up yet
 *** Best guess is someone is ignoring a bcx returned (and holding on to a ret_bcx value somewhere). It's probably upstream from store_environment.
+* 2012-07-18: Week 5 Wednesday
+** Adgenda
+*** Fix bugs in trans emitting the malloc rtcall
+*** Run a bunch of tests to see if we can make things crash / if data is being deallocated properly on failure
+**** I think we might have a problem with the current scheme for dropping uniques on failure
+**** The GC is too smart and (in some cases, like explicit failure) knows that that data isn't live when we hit the rt::rt_fail call
+**** So we don't see it as live inside the GC
+*** Recurse on roots to get all live pointers
+**** See https://github.com/mozilla/rust/issues/1498
+*** Walk list of allocations to see what to free
+*** Everything else
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Chat with Patrick (pcwalton)
+*** Regarding memory leaks on cleanup of failed tasks
+**** Patrick thinks we should be emitting a free call for the unique pointer, so it ought to be live
+**** Trans might not be doing this currently because of the assumption that landing pads with deal with cleanup
+**** See trans_cleanup to emit free calls unconditionally
+**** Note: Dead code warnings occur before trans runs, so that shouldn't be an issue
+*** Regarding resources
+**** If we want to use the stack walker to cleanup the resources of failed tasks, things will get nasty
+**** These aren't pointers, they're allocated directly on the stack, so we don't have the convenient assumption that everything is a pointer to a box
+**** Two options:
+***** Emit a tydesc pointer with every GC root
+***** Emit a destructor pointer with every GC root
+** Progress
+*** Fixed the malloc rtcall
+**** trans_expr_fn was misbehaving and not updating its bcx properly
+*** That pull request should (finally) be ready to go now
+**** https://github.com/mozilla/rust/pull/2884
+*** Now the LLVM GC pass has issues with my malloc rtcalls
+**** With all optimizations on, the failing function (task::run) has 400 basic blocks
+***** LLVM is doing a LOT of inlining
+**** Trying to find a configuration which allows me to get decent debug info out
+***** Looks like the way to go is rustc optimization off, llvm optimization on
+***** Although note that it fails on a different function (run::with_envp) than before
+***** But it still has 163 basic blocks
