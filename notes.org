@@ -997,3 +997,9 @@ What I think might be the backtrace for the malloc call preceding the failure. N
 **** Do we every lower gcroot into gcregroot automatically?
 ***** Elliott: Presumably this would be in mem2reg, right?
 ** Progress
+*** Everything in the LLVM Live IR Variables pass seems to be working fine (except for the debug printing)
+*** Each individual piece seems to be doing exactly what it is supposed to be doing
+**** DFS ordering works, topo sort works, back edges are labeled correctly, etc
+*** But we're still violating the "Theorem 3" assertion
+*** Patrick says this algorithm came from a paper (and sent me the link)
+*** Patrick says the paper was a little unclear about the toposort bit, so that might be part of the problem
