@@ -1003,3 +1003,57 @@ What I think might be the backtrace for the malloc call preceding the failure. N
 *** But we're still violating the "Theorem 3" assertion
 *** Patrick says this algorithm came from a paper (and sent me the link)
 *** Patrick says the paper was a little unclear about the toposort bit, so that might be part of the problem
+*** Need to read this paper and figure out what Theorem 3 is supposed to mean
+* 2012-07-20: Week 5 Friday
+** Adgenda
+*** Fix bug in LLVM Live IR Variables pass when using rust rtcall for malloc
+**** Read paper to figure out whether the algorithm is wrong or the data is wrong
+***** http://hal.archives-ouvertes.fr/docs/00/19/22/19/PDF/fast_liveness.pdf
+*** Run a bunch of tests to see if we can make things crash / if data is being deallocated properly on failure
+**** I think we might have a problem with the current scheme for dropping uniques on failure
+**** The GC is too smart and (in some cases, like explicit failure) knows that that data isn't live when we hit the rt::rt_fail call
+**** So we don't see it as live inside the GC
+*** Recurse on roots to get all live pointers
+**** See https://github.com/mozilla/rust/issues/1498
+*** Walk list of allocations to see what to free
+*** Everything else
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Paper's definition of Reducible Control Flow seems to be violated by the failing function
+**** I'm trying to run the LoopSimplify pass to see if I can avoid generating this code
+***** But I have run it manually, because the PassManager dependency manager doesn't know how to order transformations properly
+***** And even when I run it manually, it's ether not having any effect, or it's being blown away by something else
+**** I think rustc is actually the wrong level to run this at. Maybe GCStrategy?
+**** No, see instead TargetPassConfig::addIRPasses in llvm/lib/CodeGen/Passes.cpp
+**** I've got enough debug info to be sure LoopSimplify is running before LiveIRVariables, but it's still crashing
+***** And the PassManager *still* isn't smart enough to figure out that LoopSimplify isn't being invalidated before running LiveIRVariables
+*** Does this 'bad' code come from rustc or an llvm optimization pass?
+**** If it comes from rustc, could we fix the problem by turning off landing pads?
+**** Without optimization on, the offending function is _ZN3run13with_envp19964anonE16
+*** When you invoke a function inside a landing pad which also requires a landing pad, we use the landing pad we're already in
+**** Doh!
+**** To compile without landing pads: RUSTFLAGS='-Z no-landing-pads' make -j8
+**** Only problem is you can't use this with the existing stage0 compiler, so do a regular build first (until it fails), and then switch over to no landing pads
+**** Might want to push the no-landing-pads patch now that it actually matters...
+*** The no-landing-pad build isn't going so hot
+**** Failing at stage3 in libcore (out of stack space)
+**** Can't get gdb to break at any of my upcall_fail, rt::rt_fail, etc. breakpoints
+**** Trying unoptimized build with gdb
+**** Can't seem to get backtrace out of gdb even in unoptimized build
+**** Trying RUSTFLAGS='-Z no-landing-pads' RUST_LOG=rustc=0,::rt::backtrace make
+**** gc::gc is in the backtrace of the infinite loop
+**** Trying without calling into gc from malloc and free
+**** IT COMPILES!!!!
+*** Summary: LiveIRVariables can't handle self-referential landing pads (caused by issuing calls to Rust functions inside landing pads), and the GC causes an infinitely loop when called from exchange_malloc
+*** Is GC actually allocating memory?
+**** Maybe calling #fmt isn't such a great idea....
+**** Yup, GC is fine as long as we don't call #fmt
+**** io::stdout().write([<bytes>]) works as an alternative
+** Next time
+*** Cherry-pick no-landing-pads into a branch and issue a pull request
+*** Ask Patrick about the complexity of making landing-pads with Rust calls not be self-referential
+**** Would it work at all? Do C++ exceptions support throwing an exception while you're handling an exception?
+*** Actually finally test the GC on the test suite
