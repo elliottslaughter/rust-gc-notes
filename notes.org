@@ -1057,3 +1057,63 @@ What I think might be the backtrace for the malloc call preceding the failure. N
 *** Ask Patrick about the complexity of making landing-pads with Rust calls not be self-referential
 **** Would it work at all? Do C++ exceptions support throwing an exception while you're handling an exception?
 *** Actually finally test the GC on the test suite
+* 2012-07-23: Week 6 Monday
+** Adgenda
+*** Actually finally test the GC on the test suite, or continue to fix bugs if it doesn't work as expected
+*** Cherry-pick no-landing-pads into a branch and issue a pull request
+*** Check the debug output of LoopSimplify on the code that fails LiveIRVariables to see why LoopSimplify can't handle it
+*** Ask Patrick about the complexity of making landing-pads with Rust calls not be self-referential
+**** Would it work at all? Do C++ exceptions support throwing an exception while you're handling an exception?
+*** Bug Graydon to get form to sign for contributor access so I can assign issue to myself
+**** https://github.com/mozilla/rust/issues/2997
+**** https://github.com/mozilla/rust/issues/2861
+**** https://github.com/mozilla/rust/issues/2232
+*** Recurse on roots to get all live pointers
+**** See https://github.com/mozilla/rust/issues/1498
+*** Walk list of allocations to see what to free
+*** Everything else
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Chat with Patrick (pcwalton)
+*** I should contact Chris Lattner <clattner@apple.com> <sabre@nondot.org> to ask about the defficiencies in the Liveness algorithm
+*** Specifically, because the algorithm can't dependably handle all the control flow graphs that LLVM considers valid, should we really be using this algorithm?
+*** Or should we be massaging the graph to try to have the best chance of making the algorithm work?
+**** And what if this doesn't work?
+**** E.g. does -loop-simplify understand invoke instructions?
+*** Review of options for collecting resources:
+**** Addrspace number per type:
+***** Increase the size of the addrspace so we have 2**32 or whatever possible addrspaces
+***** Emit a per-module map from addrspaces to typedescs
+***** Emit in each function a pointer to the per-module type map
+***** Note that for word-sized resources, we'll have to cast it to a pointer so that it can have an addrspace
+***** Possible pitfall is that LLVM may optimize away the pointers?
+**** Add metadata to gcregroot:
+***** Emit gcroots in trans with typedescs as metadata
+***** Emit metadata with safe points in the GC printer
+***** Possible pitfall is that gcregroot may not support metadata
+****** Patrick is worried that even if we add it, the metadata may get blown away by LLVM optimizations, or that pointers might have strange things done to them, etc.
+** Progress
+*** Patrick pushed rust runtime calls to incoming
+**** Then incoming broke because I forgot to edit rustrt.def.in
+**** Then I fixed it
+**** Yay
+*** Made issue #2997 for tracing GC
+*** Added a pull request for turning off landing pads
+*** About irreducible CFG's and nested exception handling
+**** Can rt::rt_free fail?
+**** Suppose it does, and suppose C++ (somehow) supports nested exception handlers.
+**** Then we'll re-enter the landing pad at the top, and try to call free again. And presumably it will fail.
+**** And we'll be in an infine loop.
+**** But even if we had a separate landing pad, it's not clear that we'd make any useful progress anyway.
+**** And I'm not sure C++ supports nested exceptions properly anyway.
+*** About LoopSimplify's failure to make the landing pad mess reducible
+**** Maybe LoopSimplify isn't running because the loop pass infrastructure doesn't understand invoke-based loops
+**** Confirmed. LoopSimplify isn't running at all, because we're using invoke to construct the loop, rather than br.
+*** Note: Nested exception handling *does not* work
+**** http://llvm.org/docs/ExceptionHandling.html#cleanups
+**** "Do not allow a new exception to propagate out of the execution of a cleanup. This can corrupt the internal state of the unwinder."
+*** Investigate: Is there some way we can know (in trans) when we are in a landing pad? If so, we could avoid emitting invoke instructions.
+**** Each basic block has a parent, walk up until we hit a landing pad or root.
