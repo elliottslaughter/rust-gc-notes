@@ -1319,6 +1319,12 @@ Thanks.
 ** Firefighting build breakage, problems go deeper than self-referential tests, temporarily xfailed troublesome tests
 ** Wrote to Christ Lattner about deficiencies in current LiveIRVariables approach
 ** Initial work on new liveness algorithm based on LLVM's LiveVariables pass
+* First Half Summary
+** Initial stack walker with deallocation of boxes working
+** Upcalls moved to rust (fail, malloc, free)
+** Fixed bugs in liveness, GC infrastructure
+** Emit list of safe points in GC printer, and sort them on startup
+** Biggest challanges to GC are rooting non-boxes (i.e. resources) and making SelectionDAG et al compatible with gcregroot
 * 2012-07-30: Week 7 Monday
 ** Adgenda
 *** Finish and debug port of LiveVariables pass to IR
