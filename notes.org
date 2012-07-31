@@ -268,6 +268,12 @@ bb12 -> bb4
 *** Turned off debugging, problem "solved"
 *** Rustc now compiles itself!!!
 *** (Virtual) Tomorrow (a.k.a. Monday): Cleanup patches to make rustc work with the new llvm, then move on to turning on GC on functions
+* 2012-06-22: Week 1 Summary
+** Tried to reconstruct roadmap
+** Traced FastISel through the system and found a hack to enable it
+** Found conflict between FastISel and landing pads
+** Got Patrick's noteroots-ir branch, first pass compiling rustc with branch
+** Fixed LiveIRVariables crashes
 * 2012-06-25: Week 2 Monday
 ** First pass turning on GC "generic"
 *** Rustc can't be compiled because SelectionDAG doesn't know what to do about gcregroot intrinsics, and FastISel can't handle other things (sdiv)
@@ -400,6 +406,12 @@ Aborted (core dumped)
 **** Loop iterator bounds getting mixed up
 **** I hope this fixes the other problem, but I wouldn't bet on it
 *** In other news, 80% of tests can be compiled with --gc -Z no-landing-pads
+* 2012-06-29: Week 2 Summary
+** Added --gc flag, tried to turn on GC in rustc
+** Discovered stack map format
+** Discovered bug in compilation of stack walker, stack walking on hold until bug fix arrives
+** Google I/O
+** Add -Z no-landing-pads flag, initial testing of GC without landing pads
 * 2012-07-02: Week 3 Monday
 ** Adgenda
 *** Fix GCStrategy so that I can walk the stack
@@ -600,6 +612,11 @@ fn baz (x : i32, y : i32) -> i32 {
 }
 
 **** This can be reproduced with all task-local boxes
+* 2012-07-06: Week 3 Summary
+** Fixed bug in rooting of first-field pointers in structs
+** Emit per-module list of safe points
+** Initial look at shape code
+** Found second-parameter root bug
 * 2012-07-09: Week 4 Monday
 ** Adgenda
 *** Figure out how to drop a box given it's content type
@@ -775,6 +792,12 @@ fn baz (x : i32, y : i32) -> i32 {
 **** Fix second box parameter bug
 **** Figure out register roots
 **** Sort safe points so we can do a binary search
+* 2012-07-13: Week 4 Summary
+** Added interface to box annihilator
+** Initial working version of cleanup (intended to be called on failure)
+** Is now a good time to work on SelectionDAG?
+** Turns out we don't need FastISel most of the time after all, as long as we compile with -O0
+** Initial working version of fail upcall in rust (now 'rtcall')
 * 2012-07-16: Week 5 Monday
 ** Adgenda
 *** Check that GC metadata gets into crate map properly
@@ -1057,6 +1080,11 @@ What I think might be the backtrace for the malloc call preceding the failure. N
 *** Ask Patrick about the complexity of making landing-pads with Rust calls not be self-referential
 **** Would it work at all? Do C++ exceptions support throwing an exception while you're handling an exception?
 *** Actually finally test the GC on the test suite
+* 2012-07-21: Week 5 Summary
+** Fix per-module metadata
+** Initial working version of GC metadata runtime calls
+** Initial working version of malloc and free upcalls in rust
+** Encountered reducible CFG requirement of LiveIRVariables pass and self-referential landing pads issue in free rtcalls
 * 2012-07-23: Week 6 Monday
 ** Adgenda
 *** Actually finally test the GC on the test suite, or continue to fix bugs if it doesn't work as expected
@@ -1266,3 +1294,53 @@ Thanks.
 [1]: "Fast Liveness Checking for SSA-Form Programs", http://hal.archives-ouvertes.fr/docs/00/19/22/19/PDF/fast_liveness.pdf
 
 **** Email sent
+* 2012-07-27: Week 6 Friday
+** Adgenda
+*** Evaluate alternative liveness algorithms suggested by Andrew Trick
+**** The paper cited by Andrew suggests two approaches
+**** One is already used in LLVM's LiveVariables pass
+**** A second one might be faster, but appears to be more complex
+*** Emit root metadata (or addrspace) so we know how to drop resources
+*** Everything else
+**** Keep roots live long enough to outlive fail
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** I started moving LLVM's LiveVariables pass over to work on the IR
+* 2012-07-27: Week 6 Summary
+** Fixed self-referential landing pads
+** Updated to latests LLVM
+** Firefighting build breakage, problems go deeper than self-referential tests, temporarily xfailed troublesome tests
+** Wrote to Christ Lattner about deficiencies in current LiveIRVariables approach
+** Initial work on new liveness algorithm based on LLVM's LiveVariables pass
+* 2012-07-30: Week 7 Monday
+** Adgenda
+*** Finish and debug port of LiveVariables pass to IR
+*** Emit root metadata (or addrspace) so we know how to drop resources
+**** Patrick is enthusiastic about the addrspace approach, although I am skeptical
+*** Everything else
+**** Keep roots live long enough to outlive fail
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Draft email to Andrew Trick <atrick@apple.com>, et al
+
+When I last looked at it, the amount of machine-specific logic in LiveVariables obfuscated the algorithm behind the code. Now that I have had a chance to take another look, the algorithm doesn't look nearly so bad. I spent a day or so porting LiveVariables over to work on the IR, and seem to have a working version.
+
+Thank you both for your help.
+
+*** New LiveIRVariables builds rustc without crashing and passes all tests
+**** Pushed to incoming
+**** Burning on Windows, but hopefully transient
