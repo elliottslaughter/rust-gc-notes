@@ -1350,3 +1350,31 @@ Thank you both for your help.
 *** New LiveIRVariables builds rustc without crashing and passes all tests
 **** Pushed to incoming
 **** Burning on Windows, but hopefully transient
+* 2012-07-31: Week 7 Tuesday
+** Adgenda
+*** Double check arguments and return values in LiveIRVariables pass
+*** Emit root metadata (or addrspace) so we know how to drop resources
+**** Patrick is enthusiastic about the addrspace approach, although I am skeptical
+*** Everything else
+**** Keep roots live long enough to outlive fail
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Definitely have bugs in liveness
+**** Value live-out before its definition
+**** Arguments are not considered live-in to function's entrance block
+**** Return values are not considered live-out from function's return block
+**** Branches are considered to use the terminator instruction of the basic block they branch to
+***** Not obvious to me if we'd ever want this functionality. Maybe it could be useful, but we certainly don't need it in GC.
+*** Fixed arguments not being marked live-in
+*** Fixed return values not being marked live-out
+*** Fixed random values being used before being defined
+**** The existing code assumed that values were live-out if a successor killed it or had it set as live-through
+**** That's obviously wrong; I'm not sure how this code ever worked for them
+*** LiveIRVariables appears to be working now, at least for the small LLVM assembly files I've tried it on
