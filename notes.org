@@ -1378,3 +1378,61 @@ Thank you both for your help.
 **** The existing code assumed that values were live-out if a successor killed it or had it set as live-through
 **** That's obviously wrong; I'm not sure how this code ever worked for them
 *** LiveIRVariables appears to be working now, at least for the small LLVM assembly files I've tried it on
+* 2012-08-01: Week 7 Wednesday
+** Adgenda
+*** Emit root metadata (or addrspace) so we know how to drop resources
+**** Patrick is enthusiastic about the addrspace approach, although I am skeptical
+*** Everything else
+**** Keep roots live long enough to outlive fail
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** How to implement tydescs as addrspaces
+**** Trans chooses some mapping between addrspace and tydesc (for all tydescs which are not boxes, but require destructors)
+***** Do this when producing the drop function for each type, so that you can make the drop glue take a pointer in the right addrspace
+**** Trans alloca's references to GC root that requires an addrspace
+**** Make sure the drop interface takes a reference so that the language level interface matches what we're emitting, i.e.
+
+trait Drop {
+  fn drop (&self) {
+    ...
+  }
+}
+
+**** Trans exports symbols for any tydescs which it gave an addrspace (e.g. _gc_tydesc_metadata_<modulename>_addrspace_<N>
+**** LiveIRVariables needs to interpret pointer casts as the same value as the original pointer
+**** Fake GC machine instructions need to be updated to take an addrspace
+**** GC printer emits pointers to tydescs for any root with an addrspace > 1, using the naming convention above
+**** GC metadata reader needs to be updated for new metadata format
+**** Upsides
+***** Trans does not need to emit gcroot intrinsics, this can happen later in automatic root insertion
+**** Concerns
+***** Non-word sized resources require references to be emitted in trans for rooting
+***** Machine-level code has no concept of addrspaces, so we need to manually track them with our fake instructions
+***** We're introducing language-specific logic in the GC printer (i.e. it has to know that addrspaces correspond to types)
+*** How to implement tydescs as metadata
+**** Trans manually emits gcroots with the tydesc pointer as the metadata
+**** gcregroot needs to be extended take a metadata pointer
+**** Fake GC machine instructions need to be extended to take a metadata pointer
+**** GC printer emits metadata for each GC root
+**** Upsides
+***** Respects the intent of the existing gcroot infrastructure
+**** Concerns
+***** We're at the mercy of the optimizer to preserve metadata all the way through machine code
+***** It's possible we'll be killing potential optimization opportunities by requiring metadata to be preserved
+***** Potentially more work to do in SelectionDAG, et al
+***** Patrick says gcregroot isn't preserved by LLVM IR optimizations
+*** Chat with Patrick (pcwalton)
+**** The reason why we can't do metadata is that gcregroot isn't actually intended to be a user-level intrinsic
+**** The user doesn't add gcroot at all so that LLVM's IR optimization passes can freely optimize the roots
+**** Then at the last possible moment (i.e. in automatic root insertion, which happens after LLVM's IR optimization passes are done), we add gcroot or gcregroot intrisics
+**** These only serve the purpose of identifying roots through the machine-level passes so we can print them
+***** So for example the machine optimizations might make additional copies of pointers in other registers that we don't know about
+***** Which is why we can't use this system to build a copying GC
+**** Thus in this scheme we really have no alternative to addrspaces, since we aren't emitting manual roots, and have to way to attach metadata to types
