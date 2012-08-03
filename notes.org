@@ -1500,3 +1500,42 @@ trait Drop {
 **** Specifically, there is no obvious 'root' type, at least as far as I can see
 **** And also, it's not entirely trivial to get the addrspace inside type_of
 **** Alternatively, you could modify calls sites to root_value, or add_root_cleanup, or add_clean_temp_mem, but then you have dozens of call sites to modify
+* 2012-08-03: Week 7 Friday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Trans chooses some mapping between addrspace and tydesc (for all tydescs which are not boxes, but require destructors)
+***** Do this when producing the drop function for each type, so that you can make the drop glue take a pointer in the right addrspace
+**** Trans alloca's references to GC roots that requires an addrspace
+**** Make sure the drop interface takes a reference so that the language level interface matches what we're emitting, as in
+
+trait Drop {
+  fn drop (&self) {
+    ...
+  }
+}
+
+**** Trans exports symbols for any tydescs which it gave an addrspace (e.g. _gc_tydesc_metadata_<modulename>_addrspace_<N>
+**** LiveIRVariables needs to interpret pointer casts as the same value as the original pointer
+**** Fake GC machine instructions need to be updated to take an addrspace
+**** GC printer emits pointers to tydescs for any root with an addrspace > 1, using the naming convention above
+**** GC metadata reader needs to be updated for new metadata format
+*** Everything else
+**** Keep roots live long enough to outlive fail
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Everything that goes through add_root_cleanup is already a box, and is already being put in addrspace 1
+**** One of the other cleanup functions (add_clean_temp_mem and friends) must be responsible for resources
+*** There are so many call sites to add_clean_* that I'd really rather fiddle with add_clean_* directly
+*** Finished prototype of rooting for GC in add_clean_*, but it crashes at the beginning of stage3
+*** It works on at least a single example (when I turn off rooting for add_clean_temp and add_clean_temp_mem)
+* 2012-08-03: Week 7 Summary
+** Finished LiveIRVariables pass (and fixed it for arguments and return values)
+** Started working on per-type addrspaces; added addrspace to tydesc_info
+** Got lost in trans for a day while figuring out where resource types were going
