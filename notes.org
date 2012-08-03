@@ -1397,7 +1397,7 @@ Thank you both for your help.
 **** Trans chooses some mapping between addrspace and tydesc (for all tydescs which are not boxes, but require destructors)
 ***** Do this when producing the drop function for each type, so that you can make the drop glue take a pointer in the right addrspace
 **** Trans alloca's references to GC root that requires an addrspace
-**** Make sure the drop interface takes a reference so that the language level interface matches what we're emitting, i.e.
+**** Make sure the drop interface takes a reference so that the language level interface matches what we're emitting, as in
 
 trait Drop {
   fn drop (&self) {
@@ -1436,3 +1436,67 @@ trait Drop {
 ***** So for example the machine optimizations might make additional copies of pointers in other registers that we don't know about
 ***** Which is why we can't use this system to build a copying GC
 **** Thus in this scheme we really have no alternative to addrspaces, since we aren't emitting manual roots, and have to way to attach metadata to types
+*** T_tydesc and tydesc_type is going to get awkward
+**** Currently we generate the (singleton) tydesc LLVM type once at the start of trans
+**** Since the drop glue is a part of the tydesc, the tydesc type includes the drop glue type
+**** Thus if we want to customize the drop glue type for each resource type, we'll need to customize each tydesc type
+**** But that means tydesc can't be a singleton any more
+**** And everything becomes super awkward because we don't even have a crate context when creating the first tydesc type
+**** And it's worse because there's other infrastructure that assumes glue_fn is a singleton type (i.e. T_glue_fn calls associate_type which assigns to a global map)
+*** Chat with Patrick (pcwalton)
+**** Cast the glue function at call time (i.e. call_tydesc_glue et al) instead of declaration time (i.e. lazily_emit_tydesc_glue et al)
+**** That way you don't need to create multiple tydesc types, multiple glue types, etc
+* 2012-08-02: Week 7 Thursday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Trans chooses some mapping between addrspace and tydesc (for all tydescs which are not boxes, but require destructors)
+***** Do this when producing the drop function for each type, so that you can make the drop glue take a pointer in the right addrspace
+**** Trans alloca's references to GC roots that requires an addrspace
+**** Make sure the drop interface takes a reference so that the language level interface matches what we're emitting, as in
+
+trait Drop {
+  fn drop (&self) {
+    ...
+  }
+}
+
+**** Trans exports symbols for any tydescs which it gave an addrspace (e.g. _gc_tydesc_metadata_<modulename>_addrspace_<N>
+**** LiveIRVariables needs to interpret pointer casts as the same value as the original pointer
+**** Fake GC machine instructions need to be updated to take an addrspace
+**** GC printer emits pointers to tydescs for any root with an addrspace > 1, using the naming convention above
+**** GC metadata reader needs to be updated for new metadata format
+*** Everything else
+**** Keep roots live long enough to outlive fail
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Added addrspace to tydesc_info so each type has its own tydesc, assigned by a generator in declare_tydesc
+*** Cast the glue function in call_tydesc_glue_full so that it can take a pointer with the right addrspace
+*** Looking for the place where we allocate resources so I can cast the addrspace
+**** Not malloc_raw_dyn et al, since resources (at least the ones I care about) are on the stack
+**** Maybe alloc_ty? (Calls alloca, so type is at least going on the stack)
+**** Both of these refer to type_of to get the LLVM type. Neither seems to have logic specific to resources, nor can I find a caller who is specific to resources.
+***** Problem with type_of is that it doesn't seem to access the tydesc, so it can't know which addrspace to stick things in (in the current scheme)
+***** And, if we're allocating a resource on the stack, it's not like we're allocating a pointer anyway, so what would we cast?
+***** Also, alloca is going to return a pointer in addrspace 0 no matter what we do; our first opportunity to cast the addrspace is after we get that pointer back
+***** But maybe casting the alloca is the wrong thing to do, because if we e.g. alloca a pointer on the stack, and that pointer is in addrspace 1, we don't want the pointer to the pointer to also be in addrspace 1
+**** Currently boxes are being put into addrspace 1 by T_box_ptr (called from type_of), then this is stripped away by non_gc_box_cast later
+**** Resources are directly on the stack so there is no pointer; we need to alloca a pointer when we set up cleanup and set the address space there
+***** I think I need to track down all the calls to add_root_cleanup
+***** But add_root_cleanup doesn't seem to be capturing very many values (just judging by a print statement at the top of the file)
+***** root_value => add_root_cleanup => add_clean_temp_mem => pushes drop_ty onto the stack
+***** add_clean_temp_mem has a lot of call sites, so I'm hoping I can capture this some other way
+****** And in some cases, add_clean_temp_mem is called with a type which doesn't need drop (e.g. bool)
+****** Obviously I can't just assume the parameter to add_clean_temp_mem is a pointer
+*** Summary:
+**** What I think I'd like to is modify type_of so that everyone magically picks up the addrspace and everything just works
+**** I'm not sure that can actually work
+**** Specifically, there is no obvious 'root' type, at least as far as I can see
+**** And also, it's not entirely trivial to get the addrspace inside type_of
+**** Alternatively, you could modify calls sites to root_value, or add_root_cleanup, or add_clean_temp_mem, but then you have dozens of call sites to modify
