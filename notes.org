@@ -1539,3 +1539,72 @@ trait Drop {
 ** Finished LiveIRVariables pass (and fixed it for arguments and return values)
 ** Started working on per-type addrspaces; added addrspace to tydesc_info
 ** Got lost in trans for a day while figuring out where resource types were going
+* 2012-08-06: Week 8 Monday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Trans chooses some mapping between addrspace and tydesc (for all tydescs which are not boxes, but require destructors)
+***** Do this when producing the drop function for each type, so that you can make the drop glue take a pointer in the right addrspace
+**** Trans alloca's references to GC roots that requires an addrspace
+**** Make sure the drop interface takes a reference so that the language level interface matches what we're emitting, as in
+
+trait Drop {
+  fn drop (&self) {
+    ...
+  }
+}
+
+**** Trans exports symbols for any tydescs which it gave an addrspace (e.g. _gc_tydesc_metadata_<modulename>_addrspace_<N>
+**** LiveIRVariables needs to interpret pointer casts as the same value as the original pointer
+**** Fake GC machine instructions need to be updated to take an addrspace
+**** GC printer emits pointers to tydescs for any root with an addrspace > 1, using the naming convention above
+**** GC metadata reader needs to be updated for new metadata format
+*** Everything else
+**** Keep roots live long enough to outlive fail
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Debugging the segfault in stage3 compiler with resources rooted with addrspaces
+**** Backtrace on the segfault in stage3
+
+#0  0xb7a69edf in glue_free552 () from /home/elliottslaughter/rust/i686-unknown-linux-gnu/stage2/bin/../lib/libcore-c3ca5d77d81b46c1-0.3.so
+#1  0xb7a69e49 in glue_drop551 () from /home/elliottslaughter/rust/i686-unknown-linux-gnu/stage2/bin/../lib/libcore-c3ca5d77d81b46c1-0.3.so
+#2  0xb7a6a4fa in glue_drop564 () from /home/elliottslaughter/rust/i686-unknown-linux-gnu/stage2/bin/../lib/libcore-c3ca5d77d81b46c1-0.3.so
+#3  0xb7a6a448 in glue_drop563 () from /home/elliottslaughter/rust/i686-unknown-linux-gnu/stage2/bin/../lib/libcore-c3ca5d77d81b46c1-0.3.so
+#4  0xb7ae881c in __morestack () from /home/elliottslaughter/rust/i686-unknown-linux-gnu/stage2/bin/../lib/libcore-c3ca5d77d81b46c1-0.3.so
+#5  0xb7a6a30b in task::private_methods::meth557::consume::_bc48ba59a88b8665::_03 () from /home/elliottslaughter/rust/i686-unknown-linux-gnu/stage2/bin/../lib/libcore-c3ca5d77d81b46c1-0.3.so
+#6  0xb7a6a5e8 in task::task_builder::meth565::unlinked::_bc48ba59a88b8665::_03 () from /home/elliottslaughter/rust/i686-unknown-linux-gnu/stage2/bin/../lib/libcore-c3ca5d77d81b46c1-0.3.so
+#7  0x0805f744 in task::try569::_38129365f51a37a::_00 ()
+#8  0x0805e32a in monitor::_9712cd3b6261c0::_00 ()
+#9  0x08068454 in __morestack ()
+#10 0x08067f38 in main::_63bf702fc329a5d5::_00 ()
+#11 0x08068018 in _rust_main ()
+#12 0xb5c9d3a1 in task_start_wrapper (a=0x807c664) at /home/elliottslaughter/rust/src/rt/rust_task.cpp:159
+#13 0x00000000 in ?? ()
+
+**** The code for the call to glue_drop563
+
+; <label>:57                                      ; preds = %50
+  %58 = load { { i1, i1, %"enum option::option<comm::chan<task::notification>>[#0]", %"enum option::option<{mode: task::sched_mode,foreign_stack_size: option::option<u32>}>[#0]" }, { void ({ void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*, { void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }, %"enum option::option<util::noncopyable>[#0]", i1 } addrspace(5)** %5
+  call void bitcast (void (i1*, i1*, %tydesc**, i8*)* @glue_drop563 to void (i1*, i1*, %tydesc**, { { i1, i1, %"enum option::option<comm::chan<task::notification>>[#0]", %"enum option::option<{mode: task::sched_mode,foreign_stack_size: option::option<u32>}>[#0]" }, { void ({ void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*, { void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }, %"enum option::option<util::noncopyable>[#0]", i1 } addrspace(5)*)*)(i1* null, i1* null, %tydesc** null, { { i1, i1, %"enum option::option<comm::chan<task::notification>>[#0]", %"enum option::option<{mode: task::sched_mode,foreign_stack_size: option::option<u32>}>[#0]" }, { void ({ void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*, { void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }, %"enum option::option<uti\
+l::noncopyable>[#0]", i1 } addrspace(5)* %58)
+
+**** The bitcast at the top glue_drop563
+
+   %5 = bitcast i8* %3 to { { i1, i1, %"enum option::option<comm::chan<task::notification>>[#0]", %"enum option::option<{mode: task::sched_mode,foreign_stack_size: option::option<u32>}>[#0]" }, { void ({ void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*, { void (i1*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }*)*, { i32, %tydesc*, i8*, i8*, i8 } addrspace(1)* }, %"enum option::option<util::noncopyable>[#0]", i1 }*
+
+**** No obvious problems with the emitted code, no great way to get debug info out of this, or even print values
+*** Let's try separating out the patch for making glue functions take the correct types from the rest of the addrspace hacking
+*** Not all glue functions take a double pointer
+**** Some currently take a single pointer (notably, free)
+**** So in addition to making sure that each kind of glue always takes a double pointer, you'll also have to change the contents of the glue to make sure they always treat that double pointer as a double pointer
+***** Instead of casting it to a single pointer like they currently do
+**** This is insane
+**** Some free glue fns take the type itself (e.g. boxes, where the type already is a pointer)
+**** Some take a pointer to the type (e.g. classes, where the class itself is obviously not a pointer)
+**** I don't know if this is really worth my time, but it's hard to imagine making addrspaces work in any semi-sane way without fixing these issues first
