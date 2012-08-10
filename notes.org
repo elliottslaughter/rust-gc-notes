@@ -1608,3 +1608,209 @@ l::noncopyable>[#0]", i1 } addrspace(5)* %58)
 **** Some free glue fns take the type itself (e.g. boxes, where the type already is a pointer)
 **** Some take a pointer to the type (e.g. classes, where the class itself is obviously not a pointer)
 **** I don't know if this is really worth my time, but it's hard to imagine making addrspaces work in any semi-sane way without fixing these issues first
+* 2012-08-07: Week 8 Tuesday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Make all glue functions take explicit type parameters instead of bitcast everything
+**** Trans chooses some mapping between addrspace and tydesc (for all tydescs which are not boxes, but require destructors)
+***** Do this when producing the drop function for each type, so that you can make the drop glue take a pointer in the right addrspace
+**** Trans alloca's references to GC roots that requires an addrspace
+**** Make sure the drop interface takes a reference so that the language level interface matches what we're emitting, as in
+
+trait Drop {
+  fn drop (&self) {
+    ...
+  }
+}
+
+**** Trans exports symbols for any tydescs which it gave an addrspace (e.g. _gc_tydesc_metadata_<modulename>_addrspace_<N>
+**** LiveIRVariables needs to interpret pointer casts as the same value as the original pointer
+**** Fake GC machine instructions need to be updated to take an addrspace
+**** GC printer emits pointers to tydescs for any root with an addrspace > 1, using the naming convention above
+**** GC metadata reader needs to be updated for new metadata format
+*** Everything else
+**** Keep roots live long enough to outlive fail
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** I'm going to convert free to always take a T_ptr(type_of(t)) so that I don't end up with bizarre bitcasts in the glue functions
+**** Start simple and push the correct types down the stack slowly
+**** Created a free_ty_immediate which takes type_of(t) directly; free_ty now takes T_ptr(type_of(t))
+**** Fixed a bug in type_of returning two different types for recursive enums
+**** Seeing a pretty printer failure around 32-bit signed int boundaries, don't see how that could possibly be me, but checking anyway
+**** Yup, shows up on incoming
+**** Pushed, the other bug is someone else's problem
+*** Branches
+**** incoming <= fix-type_of-enums <= glue-fn-types
+**** incoming <= better-liveness <= resource-addrspaces (also depends on glue-fn-types) <= gc
+*** Fixed up static types for glue functions, which seem to be working now
+*** Hopefully, this'll make it easier to root values with addrspace'd pointers now
+*** Need to issue a pull request for https://github.com/elliottslaughter/rust/commits/glue-fn-types
+* 2012-08-08: Week 8 Wednesday
+** Adgenda
+*** Issue a pull request for https://github.com/elliottslaughter/rust/commits/glue-fn-types
+*** GC root for resources with addrspaces
+**** Trans chooses some mapping between addrspace and tydesc (for all tydescs which are not boxes, but require destructors)
+***** Do this when producing the drop function for each type, so that you can make the drop glue take a pointer in the right addrspace
+**** Trans alloca's references to GC roots that requires an addrspace
+**** Make sure the drop interface takes a reference so that the language level interface matches what we're emitting, as in
+
+trait Drop {
+  fn drop (&self) {
+    ...
+  }
+}
+
+**** Trans exports symbols for any tydescs which it gave an addrspace (e.g. _gc_tydesc_metadata_<modulename>_addrspace_<N>
+**** LiveIRVariables needs to interpret pointer casts as the same value as the original pointer
+**** Fake GC machine instructions need to be updated to take an addrspace
+**** GC printer emits pointers to tydescs for any root with an addrspace > 1, using the naming convention above
+**** GC metadata reader needs to be updated for new metadata format
+*** Everything else
+**** Keep roots live long enough to outlive fail
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Found one more bug in glue-fn-types (in tvec not sending the right type to cleanup)
+*** Pushed glue-fn-types to incoming
+*** Approach for addrspaces
+**** I was going to push addrspaces all the way down the entire compiler using type_of_rooted, but I'm wondering if that's not a good strategy now
+**** E.g. when iterating a struct where the elements require drop calls, now each GEP will need to be followed by a BitCast to convert from the structs's addrspace to the element's addrspace
+**** Just seems like a huge mess, will touch a lot of code
+**** Well, I can push this approach for a while to see how far it goes, and if I don't make progress come back tomorrow and try plan B (special case-ing add_clean_*)
+* 2012-08-09: Week 8 Thursday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Trans chooses some mapping between addrspace and tydesc (for all tydescs which are not boxes, but require destructors)
+***** Do this when producing the drop function for each type, so that you can make the drop glue take a pointer in the right addrspace
+**** Trans alloca's references to GC roots that requires an addrspace
+**** Make sure the drop interface takes a reference so that the language level interface matches what we're emitting, as in
+
+trait Drop {
+  fn drop (&self) {
+    ...
+  }
+}
+
+**** Trans exports symbols for any tydescs which it gave an addrspace (e.g. _gc_tydesc_metadata_<modulename>_addrspace_<N>
+**** LiveIRVariables needs to interpret pointer casts as the same value as the original pointer
+**** Fake GC machine instructions need to be updated to take an addrspace
+**** GC printer emits pointers to tydescs for any root with an addrspace > 1, using the naming convention above
+**** GC metadata reader needs to be updated for new metadata format
+*** Everything else
+**** Keep roots live long enough to outlive fail
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** I realized that pushing addrspaces through glue fns will cause a lot of problems
+**** Among other things those functions will now all pick up gcregroots, which I can't handle yet
+**** But beyond that, I'm just touching a lot of code and it's not obvious that I need to be doing that much work
+*** Back to addrspace-on-cleanup-only approach, although I saved a branch to my previous work (resource-addrspaces-glue)
+*** Still seeing a crash when I try addrspaces-on-cleanup on add_clean_temp_mem
+**** From a comment on add_root_cleanup:
+
+// Arranges for the value found in `*root_loc` to be dropped once the scope
+// associated with `scope_id` exits.  This is used to keep boxes live when
+// there are extant region pointers pointing at the interior.
+//
+// Note that `root_loc` is not the value itself but rather a pointer to the
+// value.  Generally it in alloca'd value.  The reason for this is that the
+// value is initialized in an inner block but may be freed in some outer
+// block, so an SSA value that is valid in the inner block may not be valid in
+// the outer block.  In fact, the inner block may not even execute.  Rather
+// than generate the full SSA form, we just use an alloca'd value.
+
+**** Looks like add_clean_temp_mem might not be running in the context of the value being created, but rather in an outer scope
+**** If that's the case, then it casts doubt on the entire add_clean_* approach
+**** Not sure how to replace it though, even if I add my own cleanup layer, I'll need to intercept before the scope block is sent down
+**** Currently doing a search on which add_clean_temp_mem calls are problematic (hopefully not all, but we'll see)
+**** But either way I'll need a new abstraction, as even one "bad" call site will be a problem
+* 2012-08-10: Week 8 Friday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Trans chooses some mapping between addrspace and tydesc (for all tydescs which are not boxes, but require destructors)
+***** Do this when producing the drop function for each type, so that you can make the drop glue take a pointer in the right addrspace
+**** Trans alloca's references to GC roots that requires an addrspace
+**** Make sure the drop interface takes a reference so that the language level interface matches what we're emitting, as in
+
+trait Drop {
+  fn drop (&self) {
+    ...
+  }
+}
+
+**** Trans exports symbols for any tydescs which it gave an addrspace (e.g. _gc_tydesc_metadata_<modulename>_addrspace_<N>
+**** LiveIRVariables needs to interpret pointer casts as the same value as the original pointer
+**** Fake GC machine instructions need to be updated to take an addrspace
+**** GC printer emits pointers to tydescs for any root with an addrspace > 1, using the naming convention above
+**** GC metadata reader needs to be updated for new metadata format
+*** Everything else
+**** Keep roots live long enough to outlive fail
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Turns out *every single* call to add_clean_temp_mem causes crashes
+**** I think I need a new abstraction
+***** Somehow, I need to get the block context in which the root is valid
+***** Or, I need the caller to pass me the root, instead of doing it automatically for them
+**** Failure is happening because I'm not *revoking* the cleanup properly
+***** i.e. because my fancy new cleanups are auto-rooting the value, they're not cleaning up the same value the caller thought they were cleaning up
+***** So when the caller goes to revoke the cleanup, there is nothing to revoke
+*** Proposal for new API for add_clean_*
+**** root_for_cleanup -- roots a non-immediate value for cleanup
+**** add_clean_root -- cleans up a non-temporary, rooted value
+**** add_clean_temp_root -- cleans up a temporary, rooted value
+**** add_clean_temp_immediate -- cleans up a temporary, non-immediate value
+*** Mostly going well so far, small snag in trans_temp_lval
+**** trans_temp_lval is sometimes called on non-immediates, but doesn't itself issue any revokations
+**** Since literally every other call has been fixed by patching up the revokations, I'm guessing that's happening here
+**** But if it is, it's somewhere deeper down the call stack; none of the direct callers revoke cleanups
+**** According to the comment on top of trans_temp_lval, non-immediates shouldn't be going through there anyway, but I have no idea if that's up-to-date or not
+**** Maybe I should factor trans_temp_lval to reject non-immediates?
+**** Actually, no, that comment says 'non-intermediates' not 'non-immediates'
+*** The problem is the value returned out of trans_temp_lval is being revoked elsewhere
+**** Options?
+***** Add root and rooted fields to lval_result
+****** That's a lot of code to change
+***** Add root_result which wraps lval_result (and you also need to pass some extra fields into move_val/copy_val)
+****** That's still a lot of code to change
+***** Always revoke the clean inside trans_temp_lval so that it can't escape
+****** Nope, can't do that, we get memory leaks
+**** Hacky, but I went with a lval_root to wrap lval_result
+**** Touches a lot of code, not sure it's the right answer, but it appears to work
+***** Darn, that's not all of them. This keeps snowballing into a bigger and bigger change
+*** This is all wrong, the solution is in plain sight
+**** The cleanup system already has a way of dealing with this
+**** cleanups of variant cleanup_temp already have a 'val' field whose sole purpose is to match against revoke calls to make sure the right cleanup is revoked
+**** That alone is sufficient to solve all my problems, and removes the need for all the code hacking I've been doing
+**** Doh!
+*** Looks like it's finally working
+* 2012-08-10: Week 8 Summary
+** Strict enforcement of glue fn types
+*** Not really related to what I need to do, but at the time I thought that it would make my life easier
+** Added rooting to all add_clean_* functions
+** Split add_clean_temp into add_clean_temp_immediate and add_clean_temp_mem
