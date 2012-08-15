@@ -1812,5 +1812,57 @@ trait Drop {
 * 2012-08-10: Week 8 Summary
 ** Strict enforcement of glue fn types
 *** Not really related to what I need to do, but at the time I thought that it would make my life easier
-** Added rooting to all add_clean_* functions
+** Added addrspace rooting to all add_clean_* functions
 ** Split add_clean_temp into add_clean_temp_immediate and add_clean_temp_mem
+* 2012-08-13: Week 9 Monday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Trans exports symbols for any tydescs which it gave an addrspace (e.g. _gc_tydesc_metadata_<modulename>_addrspace_<N>
+**** LiveIRVariables needs to interpret pointer casts as the same value as the original pointer
+***** Not really sure about this, since with optimization we might get a bitcast instead of an alloca
+**** Fake GC machine instructions need to be updated to take an addrspace
+**** GC printer emits pointers to tydescs for any root with an addrspace > 1, using the naming convention above
+**** GC metadata reader needs to be updated for new metadata format
+*** Everything else
+**** Keep roots live long enough to outlive fail
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Added emission of _gc_addrspace_metadata_* symbols in trans
+*** Added emission of pointers to addrspace metadata in GenericGCPrinter
+*** Somehow addrspaces aren't getting down to GenericGCPrinter (either that or Liveness isn't pickup up the root as live)
+**** No, the code just wasn't expecting addrspaces > 1
+**** The GC printer also wasn't expecting metadata to be a constant int
+**** Fixed GC printer to handle these cases, now getting roots for my toy testcase
+* 2012-08-14: Week 9 Tuesday
+** Adgenda
+*** GC root for resources with addrspaces
+**** GC metadata reader needs to be updated for new metadata format
+**** May need to turn off auto-rooting structs, because we now have explicit stack roots for them, and we don't want to double free
+*** Everything else
+**** Keep roots live long enough to outlive fail
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Updated core::gc for new metadata format
+*** Unexpectedly found that *tydesc is really **tydesc coming out of the root metadata
+*** Now able to run drop for stack-allocated class instance from gc::cleanup_stack_for_failure()
+*** Still some issues when calling malloc inside dtors
+**** Was expecting an infinite loop, but got a segfault instead
+**** Maybe the C wrapper isn't calling morestack properly?
+**** Anyway, looks like a bad thing to do, generally
+*** The GC cleaner seems to work for at least my personal case
+*** Need to check the safety of the GC for when there is no stack map
+**** Currently seeing crashes in std tests
