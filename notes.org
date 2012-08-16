@@ -1866,3 +1866,90 @@ trait Drop {
 *** The GC cleaner seems to work for at least my personal case
 *** Need to check the safety of the GC for when there is no stack map
 **** Currently seeing crashes in std tests
+* 2012-08-15: Week 9 Wednesday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Verify rooting on test suite
+**** May need to turn off auto-rooting structs, because we now have explicit stack roots for them, and we don't want to double free
+*** Everything else
+**** Keep roots live long enough to outlive fail
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** How to run GC tests so that the test runner uses GC *only* on tests and not on the various crate tests
+**** Patch for the build system to turn on GC in tests
+
+diff --git a/mk/tests.mk b/mk/tests.mk
+index cf33cff..9040ea8 100644
+--- a/mk/tests.mk
++++ b/mk/tests.mk
+@@ -359,7 +359,7 @@ CTEST_COMMON_ARGS$(1)-T-$(2)-H-$(3) :=                                              \
+         --rustc-path $$(HBIN$(1)_H_$(3))/rustc$$(X)                    \
+         --aux-base $$(S)src/test/auxiliary/                 \
+         --stage-id stage$(1)-$(2)                                                      \
+-        --rustcflags "$$(CFG_RUSTC_FLAGS) --target=$(2)"       \
++        --rustcflags "$$(CFG_RUSTC_FLAGS) --gc -Z no-landing-pads --target=$(2)"       \
+         $$(CTEST_TESTARGS)
+ 
+ CFAIL_ARGS$(1)-T-$(2)-H-$(3) :=                                        \
+
+**** Build script for configuring unoptimized, but building optimized
+
+#!/bin/bash
+
+git stash save &&
+git fetch &&
+git reset --hard origin/gc &&
+git stash pop &&
+./configure --prefix=$(pwd)/install --disable-optimize --disable-manage-submodules &&
+(RUSTFLAGS='-O' make -j8) &&
+make check -k 2>&1 | tee tests.log
+
+*** The tests in run-passes have a variety of failure modes
+**** Some don't compile (gcregroot)
+**** Some don't link (can't find _gc_module_metadata_*)
+**** Some crash
+**** Some infinite loop
+*** Fixed a crash from tydesc being null
+*** Tracking down linkage issue
+**** Problem is library isn't creating it's own _gc_module_metadata_*
+**** GenericGCPrinter isn't running on one particular lib
+***** We aren't calling trans_closure anywhere in this lib
+***** Maybe it's because the function takes a type parameter and we monomorphize function calls
+* 2012-08-16: Week 9 Thursday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Verify rooting on test suite
+**** May need to turn off auto-rooting structs, because we now have explicit stack roots for them, and we don't want to double free
+*** Everything else
+**** Keep roots live long enough to outlive fail
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Fixed linker error by not emitting GC metadata in crate map if we never call trans_closure
+*** Verified that some cases are double freeing from auto-rooting structs
+*** But now I'm getting some memory leaks (were those there before?)
+*** Patrick mentioned that saving arguments to allocas should already happen (in e.g. copy_args_to_allocas or some such function)
+*** Offending non-terminating test is run-pass/unwind-resource.rs
+**** The problem is *not* an infinite loop, but that drop is never being called
+**** This is the liveness after calling fail issue
+**** Replacing fail with rt::rt_fail(ptr::null(), ptr::null(), 0) proves that that's the issue
+**** trans_block_cleanups_ has a short-circuit clause for unreachability
+
+if bcx.unreachable { return bcx; }
+
+**** Probably good to turn that off, although I'm a little worried about emitting invalid code
+**** Not sufficient, still not calling drop
+**** Having a hard time pinning down where this goes through cleanup; debug trances look identical
