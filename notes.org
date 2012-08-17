@@ -1953,3 +1953,35 @@ if bcx.unreachable { return bcx; }
 **** Probably good to turn that off, although I'm a little worried about emitting invalid code
 **** Not sufficient, still not calling drop
 **** Having a hard time pinning down where this goes through cleanup; debug trances look identical
+* 2012-08-17: Week 9 Friday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Fix non-termination from not running dtors because roots aren't live after explicit fail
+**** Check if this fixes the memory leaks, otherwise debug
+**** Fix gcregroot emission if possible
+**** Write a quick Python script to summarize the status of the tests
+*** Everything else
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Found that there is also an unreachable check in call_tydesc_glue_full
+*** Fixed skipping cleanup due to unreachability
+*** Tests don't get stuck now, but I'm crashing a lot in run-fail
+*** Got me a Python script for summarizing failures
+**** Only 4 tests are crashing or leaking at runtime in all of run-pass
+**** But 62 crash or leak in run-fail
+***** Still leaking memory on many tests
+***** Still crashing (probably double free) on many tests
+*** Looking at a double free
+**** Definitely freeing the same pointer twice
+**** Added a hash table to avoid calling free twice
+**** Still broken?
+**** Running tests again anyway to see if I fixed any other tests
+**** Made 1 test in run-fail stop crashing
+**** 61 to go
