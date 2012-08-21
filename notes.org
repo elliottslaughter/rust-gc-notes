@@ -1985,3 +1985,44 @@ if bcx.unreachable { return bcx; }
 **** Running tests again anyway to see if I fixed any other tests
 **** Made 1 test in run-fail stop crashing
 **** 61 to go
+* 2012-08-17: Week 9 Summary
+** Finished initial working resource cleanup in trans
+** Fixed miscellaneous crashes
+*** Fixed crash from null tydesc
+*** Fixed linker error from module with no GC functions
+*** Fixed double from auto-rooting structs
+*** Fixed memory leaks resulting from bad liveness intervals (skipping dead cleanup code)
+*** Fixed double free from two copies of the same pointer on the stack
+** Wrote a Python script to summarize the state of the test suite
+* 2012-08-20: Week 10 Monday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Fix various crashes and memory leaks
+**** Fix gcregroot emission if possible
+*** Everything else
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Roots might be null (i.e. unique pointers that have already been freed will be zeroed when I see them)
+**** Adding the check for null causes 19 more tests to pass in run-fail
+*** Still seeing lots of double frees (e.g. task-killjoin-rsrc)
+**** Skipping for now, this testcase is really complicated
+*** Leaking memory in unwind-unique.rs
+**** I'm leaking memory because libcore isn't GC'd
+**** Doh!
+**** Can't fix this until I solve the gcregroot issue
+*** Avoiding gcregroot
+**** Trying special handling for args stored into allocas to see if I can avoid emitting gcregroot if possible
+**** Might also be necessary for non-args
+**** Alternatively, I could just turn off auto-root insertion for registers entirely
+***** Obviously counter-productive to gettting GC working with optimization, but in the interest of getting it working non-optimized, it might have a shot at working
+**** Looks like copy_args_to_allocas is not copying immediates to allocas
+**** The obvious solution fixes 0 files in the test suite
+*** Looks like gcregroot is coming from trans_estr in rustc/middle/trans/tvec.rs
+**** Added a hack for this, fixed a couple of tests, but most are still failing
