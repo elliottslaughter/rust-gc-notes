@@ -2026,3 +2026,34 @@ if bcx.unreachable { return bcx; }
 **** The obvious solution fixes 0 files in the test suite
 *** Looks like gcregroot is coming from trans_estr in rustc/middle/trans/tvec.rs
 **** Added a hack for this, fixed a couple of tests, but most are still failing
+* 2012-08-21: Week 10 Tuesday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Fix various crashes and memory leaks
+**** Fix gcregroot emission if possible
+*** Everything else
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Trying to fix gcregroot emission by just turning it off entirely
+**** Now rustc compiles itself with --gc -Z no-landing-pads
+**** Test runner crashes though, so I'll still need some creative flag passing to get around that
+**** With gcregroots off, but GC off in rustc, I'm passing another 40 tests or so
+**** Might need to turn off GC inside core::gc because we malloc a hash table in the GC
+***** Otherwise I might deallocate memory that the GC is actually using
+***** Yup, fail is crashing
+***** Fixed by adding a #[no_gc] attribute which turns off GC for a function
+***** Wait, no, this was fixed by a print statement in cleanup_stack_for_failure
+***** Wonder if issue is #[no_gc] does not extend to closures
+***** Tried applying #[no_gc] at module level, but not clear how to do it
+**** Alternative: Use task local memory to hold the root set
+***** Tried @mut, but getting a double free
+****** Maybe internal pointers are being rooted on the stack?
+***** Tried moving allocation of @mut to another function, still get a double free
+***** Tried wrapping @mut in unsafe pointer, get crash in deallocate
