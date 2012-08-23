@@ -2045,15 +2045,76 @@ if bcx.unreachable { return bcx; }
 **** Now rustc compiles itself with --gc -Z no-landing-pads
 **** Test runner crashes though, so I'll still need some creative flag passing to get around that
 **** With gcregroots off, but GC off in rustc, I'm passing another 40 tests or so
-**** Might need to turn off GC inside core::gc because we malloc a hash table in the GC
-***** Otherwise I might deallocate memory that the GC is actually using
-***** Yup, fail is crashing
-***** Fixed by adding a #[no_gc] attribute which turns off GC for a function
-***** Wait, no, this was fixed by a print statement in cleanup_stack_for_failure
-***** Wonder if issue is #[no_gc] does not extend to closures
-***** Tried applying #[no_gc] at module level, but not clear how to do it
-**** Alternative: Use task local memory to hold the root set
-***** Tried @mut, but getting a double free
-****** Maybe internal pointers are being rooted on the stack?
-***** Tried moving allocation of @mut to another function, still get a double free
-***** Tried wrapping @mut in unsafe pointer, get crash in deallocate
+*** Might need to turn off GC inside core::gc because we malloc a hash table in the GC
+**** Otherwise I might deallocate memory that the GC is actually using
+**** Yup, fail is crashing
+**** Fixed by adding a #[no_gc] attribute which turns off GC for a function
+**** Wait, no, this was fixed by a print statement in cleanup_stack_for_failure
+**** Wonder if issue is #[no_gc] does not extend to closures
+**** Tried applying #[no_gc] at module level, but not clear how to do it
+*** Alternative: Use task local memory to hold the root set
+**** Tried @mut, but getting a double free
+***** Maybe internal pointers are being rooted on the stack?
+**** Tried moving allocation of @mut to another function, still get a double free
+**** Tried wrapping @mut in unsafe pointer, get crash in deallocate
+ 
+* 2012-08-22: Week 10 Wednesday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Fix various crashes and memory leaks
+***** Notably, cleanup_stack_for_failure is crashing right now because it is collecting its own memory
+*** Everything else
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Ben Blum (bblum) directed me to unsafe::transmute and unsafe::bump_box_refcount as better ways to play with unsafe pointers
+*** Fiddled with code, still crashing for all non-trivial testcases
+*** Extracted unsafe rootset code into own module
+**** It works: no crashes, and no double free (checked with valgrind)
+**** Error must be something else in cleanup
+*** Was missing a check refcount == -1 on branch for exchange heap
+**** But it doesn't actually make any tests pass that didn't previously
+*** Question: Does the box annihilator call drop glue or free glue? Did it get updated when I changed free glue to always take aliases?
+* 2012-08-23: Week 10 Thursday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Fix various crashes and memory leaks
+***** Notably, cleanup_stack_for_failure is crashing right now because it is collecting its own memory
+*** Everything else
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Actually, I'm crashing in walk_gc_roots::anon even when I'm doing a dry run
+**** The problem isn't the hash table, because I've commented it out
+**** The problem isn't the boxes in the testcase, because I'm not even reaching them
+**** I think the problem might be stack closures used in stack walking might be recognized as boxed closures
+**** Trying to skip everything above the caller to cleanup_stack_for_failure so I don't have to worry about any of this
+**** If this works, make sure to check deallocating closures of various types
+**** Doesn't crash any more, but still leaking
+**** Better approach: Leave a sentinel value on the stack and then skip stack frames until you get to it
+**** That way you don't have to care that much about inlining
+*** The alloc 4 ~int's and fail testcase is leaking
+**** We're printing the stack frame for the 4 ~int's
+**** But we don't find the sentinel first, so we skip past them
+**** Maybe we're not recongizing the safe point in cleanup_stack_for_failure correctly?
+**** No, it's not complaining about not having safe point info
+**** This particular safe point must just not have any entries in it
+**** Tried adding a print statement for the sentinel at the end of the function
+***** Now I find the sentinel again, but also crash
+*** Outstanding
+**** safe points for 4 ~int's testcase
+**** closures (stack or otherwise)
+**** sentinels XOR no GC in libcore?
+***** Maybe use a build-time flag to be compatible with non-GC builds
