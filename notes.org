@@ -2118,3 +2118,141 @@ if bcx.unreachable { return bcx; }
 **** closures (stack or otherwise)
 **** sentinels XOR no GC in libcore?
 ***** Maybe use a build-time flag to be compatible with non-GC builds
+* 2012-08-24: Week 10 Friday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Fix various crashes and memory leaks
+***** Notably, I'm missing the sentinel value in some cases (based on liveness?)
+**** Write email with plan of attack for committing GC
+**** Questions to answer
+***** safe points for 4 ~int's testcase
+***** closures (stack or otherwise)
+***** sentinels XOR no GC in libcore?
+****** Maybe use a build-time flag to be compatible with non-GC builds
+*** Everything else
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Plan for sentinels when GC is off in libcore
+**** Add #[cfg(gc)] and #[cfg(nogc)] options to the compiler
+**** Write a function which tells the GC whether to expect a sentinel value or not, conditional on compiling with GC
+*** Pushed resource-addrspaces to mozilla/incoming
+*** After rebasing, seeing linking failures due to missing tydescs
+**** Looks like gen_shape_tables is enumerating some types which hadn't been used previously
+**** Since gen_shape_tables was called after emit_tydescs, those tydescs weren't being emitted into the file
+**** Swapped the call order of gen_shape_tables and emit_tydescs
+**** Not sure if that will have any other repercussions
+**** Command line processing seems to be completely broken
+***** How that's related, I have no idea
+**** Call graph
+***** gen_shape_tables => gen_resource_shapes => gen_res_dtor => monomorphize_fn => ... => get_tydesc
+**** Best guess is that emit_tydescs is also somehow tied into gen_shape_tables (i.e. it's a circular dependency)
+**** Trying to see if I can break that dependency by trans-ing all the resource dtors first
+**** Patch works in isolation, now to see if it actually fixed the GC build
+* 2012-08-24: Week 10 Summary
+** Fixed freeing null pointers (from already-deallocated unique pointers)
+** Turned of GC register roots temporarily to get unoptimized build working
+** Added sentinel hack to avoid collecting memory in use by the GC
+** Pushed resource-addrspaces branch to incoming
+* 2012-08-27: Week 11 Monday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Fix linker error from rebase
+**** Fix various crashes and memory leaks
+***** Notably, I'm missing the sentinel value in some cases (based on liveness?)
+**** Fix for GC being off in libcore by adding #[cfg(gc)] and #[cfg(nogc)] options to the compiler
+**** Write email with plan of attack for committing GC
+**** Questions to answer
+***** safe points for 4 ~int's testcase
+***** closures (stack or otherwise)
+***** sentinels XOR no GC in libcore?
+****** Maybe use a build-time flag to be compatible with non-GC builds
+*** Everything else
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** The linker error from rebase is specifically from *turning off landing pads*
+**** Now I can finally repro on my fix-missing-tydescs branch (and incoming)
+**** Turns out I need to call shape_of in force_declare_tydescs to fully break the cycle
+**** Patch is now in incoming, waiting for snapshot
+**** Also, GC branch (when rebased back to the point pre-snapshot) builds itself again
+***** But it has issues with running the test suite because we freeze in the testcase that depends on dtors running
+*** Tracking down leakage of sentinel value in GC
+**** I wonder if this is really a liveness issue, because a trivial keepalive at the end of GC doesn't fix it
+***** Not sure LLVM is smart enough for that anyway
+**** Actually, now I'm losing the sentinel even in the fail case (didn't I used to get it?)
+**** LLVM is definitely spitting out an identical list of stack offsets for each safe point
+**** The address within cleanup_stack_for_failure seems to be shifting around between fail.rs and leak.rs
+***** Not really sure what the cause is, as there really ought to only be one safe point of relevance in the function
+***** Trying to push sentinel down to rt::rt_fail to see if that stabilizes the function
+***** Now it looks like I can always find the sentinel
+***** Still leaking from pthread_create
+*** Also, the core-without-GC build is also broken right now, because it's looking for the sentinel
+* 2012-08-28: Week 11 Tuesday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Fix for GC being off in libcore by adding #[cfg(gc)] and #[cfg(nogc)] options to the compiler
+**** Write email/blog post describing the status of GC in rust
+**** Questions to answer
+***** safe points for 4 ~int's testcase
+***** closures (stack or otherwise)
+***** sentinels XOR no GC in libcore?
+****** Maybe use a build-time flag to be compatible with non-GC builds
+*** Everything else
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Coded up #[cfg(gc)] and conditional sentinel check
+**** Problem is it won't compile without another snapshot
+* 2012-08-29: Week 11 Wednesday
+** Adgenda
+*** Work on talk
+** Progress
+*** Worked on talk
+*** Created github repo https://github.com/elliottslaughter/rust-gc-talk
+* 2012-08-30: Week 11 Thursday
+** Adgenda
+*** Give talk
+*** GC root for resources with addrspaces
+**** Verify GC when GC is off in libcore
+**** Leak pthread handle in 4 ~int's case?
+**** Write email/blog post describing the status of GC in rust
+**** Questions to answer
+***** Stack closures refcount field uninitialized?
+*** Everything else
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Gave talk
+*** Verified that the GC once again works with GC off in libcore, after rebasing with snapshot
+**** We're failing one extra run-fail test, but otherwise test results look exactly the same as before the rebase
+*** The leak in 4 ~int's isn't from pthreads, it's an assert in memory_region that's causing us to exit early
+**** It's asserting on live_allocations < 1, *not* >= 1
+**** With RUSTRT_TRACK_ALLOCATIONS set to 3 in rt/memory_region.h, it claims the pointers don't refer to allocations
+**** But these pointers are the same ones I printed out in the debug statements at the top of main
+**** Maybe double free?
+**** But there's no explicit free in the LLVM assembly code before the call to fail
