@@ -2256,3 +2256,86 @@ if bcx.unreachable { return bcx; }
 **** But these pointers are the same ones I printed out in the debug statements at the top of main
 **** Maybe double free?
 **** But there's no explicit free in the LLVM assembly code before the call to fail
+* 2012-08-31: Week 11 Friday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Still leaking in 4 ~int's case?
+**** Write email/blog post describing the status of GC in rust
+**** Questions to answer
+***** Stack closures refcount field uninitialized?
+*** Conservative GC (if you have time)
+*** Everything else
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Looks like the box annihilator didn't actually know how to deallocate unique boxes
+**** Was trying to deallocate everything out of the task-local heap
+**** Yeah, that doesn't work so well
+**** Testing fix
+**** Fixes 5 tests in the without-GC-in-libcore build, but the with-GC-in-libcore build is still getting stuck in tests
+**** Notably, unwind-unique is still leaking
+*** Leaks when unwinding task
+**** Not finding sentinel
+**** Guess my last fix didn't work as well as I thought it did
+**** Look at these stack offsets
+
+                                                        /==============================\
+sentinel: 0xb69067a8 <==================================| Here's the original pointer. |
+rootset: root 0xb66012f4 box 0xb6602d58                 \==============================/
+stack frame: fp 0xb6601118 pc 0x00000000
+stack frame: fp 0xb6601138 pc 0xb7579ac2
+stack frame: fp 0xb66011b8 pc 0xb7521d1f
+  root 0xb6601190 (fp 0xb66011b8 offset -40)
+    skipping (not yet sentinel): root 0xb6601190
+  root 0xb6601194 (fp 0xb66011b8 offset -36)
+    skipping (not yet sentinel): root 0xb6601194
+  root 0xb66011a0 (fp 0xb66011b8 offset -24)
+    skipping (not yet sentinel): root 0xb66011a0
+  root 0xb66011a8 (fp 0xb66011b8 offset -16)
+    skipping (not yet sentinel): root 0xb66011a8
+stack frame: fp 0xb6601268 pc 0xb7521b35
+stack frame: fp 0xb6601308 pc 0xb75238a1
+  root 0xb66012f4 (fp 0xb6601308 offset -20)
+    skipping (not yet sentinel): root 0xb66012f4
+stack frame: fp 0xb690673c pc 0xb757a740
+  is_safe_point: no safe point for pc 0xb757a740
+stack frame: fp 0xb69067b8 pc 0xb75236c8                /================================================================================================\
+  root 0xb69067a4 (fp 0xb69067b8 offset -20) <==========| This is off by only 4 bytes. If the offset was -16 instead of -20, then this would be correct. |
+    skipping (not yet sentinel): root 0xb69067a4        \================================================================================================/
+stack frame: fp 0xb69067f8 pc 0x08048a84
+  root 0xb69067e8 (fp 0xb69067f8 offset -16)
+    skipping (not yet sentinel): root 0xb69067e8
+stack frame: fp 0xb6906938 pc 0xb751b707
+  root 0xb690688c (fp 0xb6906938 offset -172)
+    skipping (not yet sentinel): root 0xb690688c
+  root 0xb69068ac (fp 0xb6906938 offset -140)
+    skipping (not yet sentinel): root 0xb69068ac
+  root 0xb69068bc (fp 0xb6906938 offset -124)
+    skipping (not yet sentinel): root 0xb69068bc
+  root 0xb69068cc (fp 0xb6906938 offset -108)
+    skipping (not yet sentinel): root 0xb69068cc
+  root 0xb69068dc (fp 0xb6906938 offset -92)
+    skipping (not yet sentinel): root 0xb69068dc
+  root 0xb69068e4 (fp 0xb6906938 offset -84)
+    skipping (not yet sentinel): root 0xb69068e4
+  root 0xb6906904 (fp 0xb6906938 offset -52)
+    skipping (not yet sentinel): root 0xb6906904
+ERROR: never found sentinel!!!
+
+**** Maybe the stack offsets are getting messed up somehow (e.g. this one should have been -16 and somehow it became -20)
+**** In working examples, the offset is indeed -16 instead of -20
+**** But we're linking against the same libcore, so how is this possible?
+*** More about strange offsets in libcore
+**** There are actually two roots in rt_fail
+* 2012-08-31: Week 11 Summary
+** Fixed linker error from not declaring all tydescs before emit_tydescs
+** Fixed build without GC enabled in libcore
+** Gave talk on Rust GC
+** Pushed sentinel value further down the stack in an attempt to fix issues finding sentinel values
+** Verified that I am in fact getting bogus offsets
