@@ -2339,3 +2339,43 @@ ERROR: never found sentinel!!!
 ** Gave talk on Rust GC
 ** Pushed sentinel value further down the stack in an attempt to fix issues finding sentinel values
 ** Verified that I am in fact getting bogus offsets
+* 2012-09-04: Week 12 Tuesday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Fix missing sentinel from incorrect offsets
+**** Write email/blog post describing the status of GC in rust
+**** Questions to answer
+***** Stack closures refcount field uninitialized?
+*** Try Conservative GC (if you have time)
+*** Everything else
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Debugging missing sentinel
+**** Added embedded function names in function metadata
+**** Traces look really strange--sometimes missing functions, sometimes have duplicate entries for same function
+**** I see strangeness on all of my sanity tests--even ones which appear to be working correctly (the strangeness just happens up the stack, so it doesn't matter)
+***** E.g. the 4 ~int's testcase, which I "fixed" by moving the sentinel down into rt::rt_fail, is missing a stack frame for gc::cleanup_stack_on_failure
+**** In every example, I see the following pattern in the stack frames
+***** function_1
+***** anonymous (no safe point entry)
+***** function_1 (expected function_2)
+**** Is the middle stack frame __morestack?
+**** What happens with return addresses around __morestack boundaries?
+*** Chat with Brian (brson)
+**** Create a rust_builtin function (ok to run on C stack) to return rust_task::stk
+***** This gives us the end of a doubly linked list of stack segments (i.e. containing the most recent stack frame)
+***** Chasing the prev pointers of the stk_seg structs should provide earlier segments
+***** The bounds of each stk_seg can be obtained from the pointer to the stk_seg itself (lower bound) and the stk_seg::end pointer (upper bound)
+**** When walking the stack, for each frame
+***** Check if it is contained in the current stack segment
+***** If yes, proceed as usual
+***** If not, check if it is contained in the prev stack segment (and prev != original, i.e. we haven't wrapped around)
+****** If yes, then we're straddling a stack boundary, and make sure to use fp+8 as the return address rather than fp+4
+****** If not, skip this frame (since we're somewhere above the segment we originally started at)
