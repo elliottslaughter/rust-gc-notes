@@ -2379,3 +2379,43 @@ ERROR: never found sentinel!!!
 ***** If not, check if it is contained in the prev stack segment (and prev != original, i.e. we haven't wrapped around)
 ****** If yes, then we're straddling a stack boundary, and make sure to use fp+8 as the return address rather than fp+4
 ****** If not, skip this frame (since we're somewhere above the segment we originally started at)
+* 2012-09-05: Week 12 Wednesday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Fix finding safe points on segmented stack
+**** Write email/blog post describing the status of GC in rust
+**** Questions to answer
+***** Stack closures refcount field uninitialized?
+*** Try Conservative GC (if you have time)
+*** Everything else
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Wrote patch for fixing segmented stack
+**** Works on my sanity checks
+**** Running tests now
+**** Doesn't seem to have any affect on without-GC-in-libcore build
+**** Build with-GC-in-libcore is still hanging
+* 2012-09-06: Week 12 Thursday
+** Adgenda
+*** GC root for resources with addrspaces
+**** Write email/blog post describing the status of GC in rust
+**** Questions to answer
+***** Stack closures refcount field uninitialized?
+*** Try Conservative GC (if you have time)
+*** Everything else
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
