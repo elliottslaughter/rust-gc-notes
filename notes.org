@@ -2451,3 +2451,5 @@ ERROR: never found sentinel!!!
 **** Didn't see this before the rebase, not sure how rebase could have interacted with GC to cause this
 ***** But this passed on the commit right before mine, so it looks like my problem, unless it's a spurious crash
 **** src/test/bench/task-perf-spawnalot.rs
+**** FreeBSD passed on the commit right after mine, so I think this was a fluke
+*** All tests now passing (with GC off)
