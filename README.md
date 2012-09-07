@@ -206,3 +206,18 @@ invokation instead.
 This might crash more, because libcore still has a few issues with GC
 which tend to pop up more frequently just because of how pervasively
 libcore is used.
+
+## Other Resources
+
+I kept a daily log which is a detailed record of everything I tried
+during the summer. I don't expect it to be especially helpful to
+anyone, but it might shed light on e.g. what exact configurations I
+was testing, etc. At any rate, here you go:
+
+https://github.com/elliottslaughter/rust-gc-notes/blob/master/notes.org
+
+I also gave a talk summarizing my work over the summer. If you've read
+this far, you probably won't need it, but you might find it
+interesting.
+
+https://github.com/elliottslaughter/rust-gc-talk
