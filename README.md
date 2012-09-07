@@ -9,7 +9,7 @@ my work follows in the rest of this file.
 Quick Links:
 
   * [Talk for Mozilla Research (2012-08-30)](https://github.com/elliottslaughter/rust-gc-talk)
-  * [Detailed Log](https://github.com/elliottslaughter/rust-gc-notes/blob/master/notes.org)
+  * [Detailed Log](https://raw.github.com/elliottslaughter/rust-gc-notes/master/notes.org)
 
 ## Background
 
@@ -214,7 +214,7 @@ during the summer. I don't expect it to be especially helpful to
 anyone, but it might shed light on e.g. what exact configurations I
 was testing, etc. At any rate, here you go:
 
-https://github.com/elliottslaughter/rust-gc-notes/blob/master/notes.org
+https://raw.github.com/elliottslaughter/rust-gc-notes/master/notes.org
 
 I also gave a talk summarizing my work over the summer. If you've read
 this far, you probably won't need it, but you might find it
