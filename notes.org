@@ -2419,3 +2419,35 @@ ERROR: never found sentinel!!!
 **** Figure out register roots
 **** Binary search on safe points
 ** Progress
+*** Failures on 64-bit Linux
+**** coretest vec::tests::test_any2_and_all2
+**** Spinning up 64-bit Linux server to investigate issues there
+**** Attempted patch to avoid uninitialized reads in 64-bit Linux
+***** Theory was that the return address in the morestack case might depend on the word size
+***** Nope, still fails
+*** Failures on 32-bit Windows
+**** test\run-pass\anon-extern-mod-cross-crate-2.rs
+**** stdout and stderr are blank
+* 2012-09-07: Week 12 Friday
+** Adgenda
+*** Get everything out the door
+*** Write email/blog post describing the status of GC in rust
+*** Everything else
+**** Recurse on roots to get all live pointers
+***** See https://github.com/mozilla/rust/issues/1498
+**** Walk list of allocations to see what to free
+**** Change rt::rt_fail's return type from 'nil' to '!' ? (See https://github.com/mozilla/rust/issues/2232)
+**** First pass on SelectionDAG for the new GC infrastructure
+**** Fix second box parameter bug
+**** Figure out register roots
+**** Binary search on safe points
+** Progress
+*** Added early escape to GC in case GC isn't enabled (fixes 64-bit Linux)
+*** Pushed GC branch to incoming
+*** Testing workaround for Windows to fix presumed crash there
+**** Never mind, I just realized that this test was failing before GC
+**** Apparently the buildbot for incoming doesn't actually run the entire test suite
+*** Possibly spurious crash on FreeBSD?
+**** Didn't see this before the rebase, not sure how rebase could have interacted with GC to cause this
+***** But this passed on the commit right before mine, so it looks like my problem, unless it's a spurious crash
+**** src/test/bench/task-perf-spawnalot.rs
