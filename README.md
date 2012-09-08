@@ -209,10 +209,10 @@ libcore is used.
 
 ## Other Files in This Repository
 
-  * `notes.org` -- I kept a daily log which is a detailed record of
-    everything I tried during the summer. I don't expect it to be
-    especially helpful to anyone, but it might shed light on e.g. what
-    exact configurations I was testing, etc.
+  * `notes.org` -- A detailed log of everything I tried during the
+    summer. I don't expect it to be especially helpful to anyone, but
+    it might shed light on e.g. what exact configurations I was
+    testing, etc.
 
   * `rebuild.sh` -- The script I used to run tests with GC enabled in
     various configurations.
