@@ -222,8 +222,8 @@ libcore is used.
   * `summarize.py` -- A script I used to summarize results from test
     runs, and diagnosing failures.
 
-  * `summary-2012-09-06.log` -- The output from my last test run, on a
-    32-bit Ubuntu machine.
+  * `summary-2012-09-06.log` -- The output of `summarize.py` from my
+    last test run, on a 32-bit Ubuntu machine.
 
   * `test-gc.diff` -- The same diff as above, in case you like using
     the patch command. Turns on GC within testcases, without enabling
