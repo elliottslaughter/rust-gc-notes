@@ -207,14 +207,29 @@ This might crash more, because libcore still has a few issues with GC
 which tend to pop up more frequently just because of how pervasively
 libcore is used.
 
+## Other Files in This Repository
+
+  * `notes.org` -- I kept a daily log which is a detailed record of
+    everything I tried during the summer. I don't expect it to be
+    especially helpful to anyone, but it might shed light on e.g. what
+    exact configurations I was testing, etc.
+
+  * `rebuild.sh` -- The script I used to run tests with GC enabled in
+    various configurations.
+
+  * `sanity-tests/` -- A couple simple tests that should always pass.
+
+  * `summarize.py` -- A script I used to summarize results from test
+    runs, and diagnosing failures.
+
+  * `summary-2012-09-06.log` -- The output from my last test run, on a
+    32-bit Ubuntu machine.
+
+  * `test-gc.diff` -- The same diff as above, in case you like using
+    the patch command. Turns on GC within testcases, without enabling
+    GC for either the test runner, or libcore.
+
 ## Other Resources
-
-I kept a daily log which is a detailed record of everything I tried
-during the summer. I don't expect it to be especially helpful to
-anyone, but it might shed light on e.g. what exact configurations I
-was testing, etc. At any rate, here you go:
-
-https://raw.github.com/elliottslaughter/rust-gc-notes/master/notes.org
 
 I also gave a talk summarizing my work over the summer. If you've read
 this far, you probably won't need it, but you might find it
