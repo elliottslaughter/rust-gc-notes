@@ -9,7 +9,6 @@ my work follows in the rest of this file.
 Quick Links:
 
   * [Talk for Mozilla Research (2012-08-30)](https://github.com/elliottslaughter/rust-gc-talk)
-  * [Detailed Log](https://raw.github.com/elliottslaughter/rust-gc-notes/master/notes.org)
 
 ## Background
 
